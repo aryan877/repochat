@@ -1,0 +1,349 @@
+"use client";
+
+import { z } from "zod";
+import { TamboTool } from "@tambo-ai/react";
+import { FunctionReturnType } from "convex/server";
+import { api } from "../../convex/_generated/api";
+
+type GitHubActions = {
+  getPullRequest: (args: { clerkId: string; owner: string; repo: string; prNumber: number }) => Promise<FunctionReturnType<typeof api.github.getPullRequest>>;
+  getPullRequestFiles: (args: { clerkId: string; owner: string; repo: string; prNumber: number }) => Promise<FunctionReturnType<typeof api.github.getPullRequestFiles>>;
+  getFileContent: (args: { clerkId: string; owner: string; repo: string; path: string; ref?: string }) => Promise<FunctionReturnType<typeof api.github.getFileContent>>;
+  postReviewComment: (args: { clerkId: string; owner: string; repo: string; prNumber: number; body: string; path: string; line: number }) => Promise<FunctionReturnType<typeof api.github.postReviewComment>>;
+  createReview: (args: { clerkId: string; owner: string; repo: string; prNumber: number; event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT"; body?: string }) => Promise<FunctionReturnType<typeof api.github.createReview>>;
+  mergePullRequest: (args: { clerkId: string; owner: string; repo: string; prNumber: number; mergeMethod?: "merge" | "squash" | "rebase" }) => Promise<FunctionReturnType<typeof api.github.mergePullRequest>>;
+  getRepoTree: (args: { clerkId: string; owner: string; repo: string; branch?: string }) => Promise<FunctionReturnType<typeof api.github.getRepoTree>>;
+  searchCode: (args: { clerkId: string; owner: string; repo: string; query: string }) => Promise<FunctionReturnType<typeof api.github.searchCode>>;
+  listPullRequests: (args: { clerkId: string; owner: string; repo: string; state?: "open" | "closed" | "all" }) => Promise<FunctionReturnType<typeof api.github.listPullRequests>>;
+  listBranches: (args: { clerkId: string; owner: string; repo: string }) => Promise<FunctionReturnType<typeof api.github.listBranches>>;
+};
+
+interface GitHubToolsConfig {
+  clerkId: string;
+  actions: GitHubActions;
+}
+
+export function createGitHubTools({ clerkId, actions }: GitHubToolsConfig): TamboTool[] {
+  const analyzePR: TamboTool = {
+    name: "analyzePR",
+    description: `Analyze a GitHub pull request to review code changes.
+Use this when the user wants to review a PR or asks about PR changes.
+Returns PR metadata and list of changed files with diffs.`,
+    inputSchema: z.object({
+      owner: z.string().describe("Repository owner (e.g., 'facebook')"),
+      repo: z.string().describe("Repository name (e.g., 'react')"),
+      prNumber: z.number().describe("Pull request number"),
+    }),
+    outputSchema: z.object({
+      title: z.string(),
+      author: z.string(),
+      authorAvatar: z.string().optional(),
+      state: z.string(),
+      baseBranch: z.string(),
+      headBranch: z.string(),
+      additions: z.number(),
+      deletions: z.number(),
+      changedFiles: z.number(),
+      createdAt: z.string(),
+      url: z.string(),
+      description: z.string().optional(),
+      files: z.array(z.object({
+        filename: z.string(),
+        status: z.string(),
+        additions: z.number(),
+        deletions: z.number(),
+        patch: z.string().optional(),
+      })),
+    }),
+    tool: async ({ owner, repo, prNumber }) => {
+      const pr = await actions.getPullRequest({ clerkId, owner, repo, prNumber });
+      const files = await actions.getPullRequestFiles({ clerkId, owner, repo, prNumber });
+
+      return {
+        title: pr.title,
+        author: pr.user.login,
+        authorAvatar: pr.user.avatar_url,
+        state: pr.state,
+        baseBranch: pr.base.ref,
+        headBranch: pr.head.ref,
+        additions: pr.additions,
+        deletions: pr.deletions,
+        changedFiles: pr.changed_files,
+        createdAt: pr.created_at,
+        url: pr.html_url,
+        description: pr.body,
+        files: files.map((f: { filename: string; status: string; additions: number; deletions: number; patch?: string }) => ({
+          filename: f.filename,
+          status: f.status,
+          additions: f.additions,
+          deletions: f.deletions,
+          patch: f.patch,
+        })),
+      };
+    },
+  };
+
+  const getFileContent: TamboTool = {
+    name: "getFileContent",
+    description: `Get the content of a file from a GitHub repository.
+Use this when the user wants to see a specific file or needs context about code.`,
+    inputSchema: z.object({
+      owner: z.string().describe("Repository owner"),
+      repo: z.string().describe("Repository name"),
+      path: z.string().describe("File path within the repository"),
+      ref: z.string().optional().describe("Branch, tag, or commit SHA"),
+    }),
+    outputSchema: z.object({
+      content: z.string(),
+      size: z.number(),
+      sha: z.string(),
+      path: z.string(),
+    }),
+    tool: async ({ owner, repo, path, ref }) => {
+      const data = await actions.getFileContent({ clerkId, owner, repo, path, ref });
+
+      return {
+        content: data.decodedContent,
+        size: data.size,
+        sha: data.sha,
+        path: data.path,
+      };
+    },
+  };
+
+  const postReviewComment: TamboTool = {
+    name: "postReviewComment",
+    description: `Post a review comment on a specific line of a pull request.
+Use this when the user wants to add a comment about specific code.`,
+    inputSchema: z.object({
+      owner: z.string().describe("Repository owner"),
+      repo: z.string().describe("Repository name"),
+      prNumber: z.number().describe("Pull request number"),
+      body: z.string().describe("Comment text"),
+      path: z.string().describe("File path to comment on"),
+      line: z.number().describe("Line number to comment on"),
+    }),
+    outputSchema: z.object({
+      id: z.number(),
+      url: z.string(),
+      createdAt: z.string(),
+    }),
+    tool: async ({ owner, repo, prNumber, body, path, line }) => {
+      const comment = await actions.postReviewComment({
+        clerkId,
+        owner,
+        repo,
+        prNumber,
+        body,
+        path,
+        line,
+      });
+
+      return {
+        id: comment.id,
+        url: comment.html_url,
+        createdAt: comment.created_at,
+      };
+    },
+  };
+
+  const submitReview: TamboTool = {
+    name: "submitReview",
+    description: `Submit a review on a pull request (approve, request changes, or comment).
+Use this when the user wants to approve a PR or request changes.`,
+    inputSchema: z.object({
+      owner: z.string().describe("Repository owner"),
+      repo: z.string().describe("Repository name"),
+      prNumber: z.number().describe("Pull request number"),
+      event: z.enum(["APPROVE", "REQUEST_CHANGES", "COMMENT"]).describe("Type of review"),
+      body: z.string().optional().describe("Review comment"),
+    }),
+    outputSchema: z.object({
+      id: z.number(),
+      state: z.string(),
+      url: z.string(),
+    }),
+    tool: async ({ owner, repo, prNumber, event, body }) => {
+      const review = await actions.createReview({
+        clerkId,
+        owner,
+        repo,
+        prNumber,
+        event,
+        body,
+      });
+
+      return {
+        id: review.id,
+        state: review.state,
+        url: review.html_url,
+      };
+    },
+  };
+
+  const mergePR: TamboTool = {
+    name: "mergePR",
+    description: `Merge a pull request.
+Use this when the user explicitly asks to merge a PR.
+ALWAYS confirm with the user before merging.`,
+    inputSchema: z.object({
+      owner: z.string().describe("Repository owner"),
+      repo: z.string().describe("Repository name"),
+      prNumber: z.number().describe("Pull request number"),
+      mergeMethod: z.enum(["merge", "squash", "rebase"]).optional().describe("Merge method"),
+    }),
+    outputSchema: z.object({
+      merged: z.boolean(),
+      sha: z.string(),
+      message: z.string(),
+    }),
+    tool: async ({ owner, repo, prNumber, mergeMethod }) => {
+      const result = await actions.mergePullRequest({
+        clerkId,
+        owner,
+        repo,
+        prNumber,
+        mergeMethod,
+      });
+
+      return result;
+    },
+  };
+
+  const getRepoTree: TamboTool = {
+    name: "getRepoTree",
+    description: `Get the file tree structure of a repository.
+Use this when the user wants to explore a repository or see its structure.`,
+    inputSchema: z.object({
+      owner: z.string().describe("Repository owner"),
+      repo: z.string().describe("Repository name"),
+      branch: z.string().optional().describe("Branch name"),
+    }),
+    outputSchema: z.object({
+      tree: z.array(z.object({
+        path: z.string(),
+        type: z.string(),
+        size: z.number().optional(),
+      })),
+      truncated: z.boolean(),
+    }),
+    tool: async ({ owner, repo, branch }) => {
+      const data = await actions.getRepoTree({ clerkId, owner, repo, branch });
+
+      return {
+        tree: data.tree.map((item: { path: string; type: string; size?: number }) => ({
+          path: item.path,
+          type: item.type === "blob" ? "file" : "directory",
+          size: item.size,
+        })),
+        truncated: data.truncated,
+      };
+    },
+  };
+
+  const searchCode: TamboTool = {
+    name: "searchCode",
+    description: `Search for code in a repository.
+Use this when the user wants to find specific code patterns or functions.`,
+    inputSchema: z.object({
+      owner: z.string().describe("Repository owner"),
+      repo: z.string().describe("Repository name"),
+      query: z.string().describe("Search query"),
+    }),
+    outputSchema: z.object({
+      totalCount: z.number(),
+      items: z.array(z.object({
+        name: z.string(),
+        path: z.string(),
+        url: z.string(),
+      })),
+    }),
+    tool: async ({ owner, repo, query }) => {
+      const data = await actions.searchCode({ clerkId, query, owner, repo });
+
+      return {
+        totalCount: data.total_count,
+        items: data.items.map((item: { name: string; path: string; html_url: string }) => ({
+          name: item.name,
+          path: item.path,
+          url: item.html_url,
+        })),
+      };
+    },
+  };
+
+  const listPullRequests: TamboTool = {
+    name: "listPullRequests",
+    description: `List pull requests for a repository.
+Use this when the user wants to see open/closed PRs.`,
+    inputSchema: z.object({
+      owner: z.string().describe("Repository owner"),
+      repo: z.string().describe("Repository name"),
+      state: z.enum(["open", "closed", "all"]).optional().describe("Filter by state"),
+    }),
+    outputSchema: z.object({
+      pullRequests: z.array(z.object({
+        number: z.number(),
+        title: z.string(),
+        state: z.string(),
+        author: z.string(),
+        createdAt: z.string(),
+        url: z.string(),
+      })),
+    }),
+    tool: async ({ owner, repo, state }) => {
+      const prs = await actions.listPullRequests({ clerkId, owner, repo, state });
+
+      return {
+        pullRequests: prs.map((pr: { number: number; title: string; state: string; user: { login: string }; created_at: string; html_url: string }) => ({
+          number: pr.number,
+          title: pr.title,
+          state: pr.state,
+          author: pr.user.login,
+          createdAt: pr.created_at,
+          url: pr.html_url,
+        })),
+      };
+    },
+  };
+
+  const listBranches: TamboTool = {
+    name: "listBranches",
+    description: `List branches in a repository.
+Use this when the user wants to see available branches.`,
+    inputSchema: z.object({
+      owner: z.string().describe("Repository owner"),
+      repo: z.string().describe("Repository name"),
+    }),
+    outputSchema: z.object({
+      branches: z.array(z.object({
+        name: z.string(),
+        protected: z.boolean(),
+      })),
+    }),
+    tool: async ({ owner, repo }) => {
+      const branches = await actions.listBranches({ clerkId, owner, repo });
+
+      return {
+        branches: branches.map((b: { name: string; protected: boolean }) => ({
+          name: b.name,
+          protected: b.protected,
+        })),
+      };
+    },
+  };
+
+  return [
+    analyzePR,
+    getFileContent,
+    postReviewComment,
+    submitReview,
+    mergePR,
+    getRepoTree,
+    searchCode,
+    listPullRequests,
+    listBranches,
+  ];
+}
+
+export const defaultTools: TamboTool[] = [];

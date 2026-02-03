@@ -87,10 +87,10 @@ function TamboProviderWithAuth({ children }: { children: ReactNode }) {
     clerkId ? { clerkId } : "skip"
   );
 
-  const getPullRequest = useAction(api.github.getPullRequest);
-  const getPullRequestFiles = useAction(api.github.getPullRequestFiles);
-  const getFileContent = useAction(api.github.getFileContent);
-  const postReviewComment = useAction(api.github.postReviewComment);
+  const getPullRequest = useAction(api.github.getPullRequestPublic);
+  const getPullRequestFiles = useAction(api.github.getPullRequestFilesPublic);
+  const getFileContent = useAction(api.github.getFileContentPublic);
+  const postReviewComment = useAction(api.github.postReviewCommentPublic);
   const createReview = useAction(api.github.createReview);
   const mergePullRequest = useAction(api.github.mergePullRequest);
   const getRepoTree = useAction(api.github.getRepoTree);

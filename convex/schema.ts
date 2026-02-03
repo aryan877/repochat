@@ -2,161 +2,211 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
-  // Users with GitHub connection
+  // Users (linked via Clerk)
   users: defineTable({
     clerkId: v.string(),
-    email: v.string(),
+    email: v.optional(v.string()),
     name: v.optional(v.string()),
-    imageUrl: v.optional(v.string()),
+    avatarUrl: v.optional(v.string()),
+    // GitHub connection via GitHub App installation
+    githubInstallationId: v.optional(v.id("installations")),
+    githubUsername: v.optional(v.string()),
+    githubAvatarUrl: v.optional(v.string()),
     createdAt: v.number(),
+    updatedAt: v.number(),
   })
     .index("by_clerk_id", ["clerkId"])
-    .index("by_email", ["email"]),
+    .index("by_github_installation", ["githubInstallationId"]),
 
-  // GitHub connections (secure token storage - separate from user for security)
-  githubConnections: defineTable({
-    userId: v.id("users"),
-    // GitHub user info
-    githubId: v.number(),
-    githubUsername: v.string(),
-    githubAvatarUrl: v.optional(v.string()),
-    // Token info (encrypted server-side, never sent to client)
-    accessToken: v.string(),
-    tokenType: v.string(),
-    scope: v.string(), // Comma-separated scopes
-    // Metadata
-    connectedAt: v.number(),
-    lastUsedAt: v.number(),
-    // Token refresh (for OAuth apps with refresh tokens)
-    refreshToken: v.optional(v.string()),
-    expiresAt: v.optional(v.number()),
+  // GitHub App installations
+  installations: defineTable({
+    installationId: v.number(),
+    accountId: v.number(),
+    accountLogin: v.string(),
+    accountType: v.union(v.literal("User"), v.literal("Organization")),
+    accountAvatarUrl: v.optional(v.string()),
+    permissions: v.object({
+      contents: v.optional(v.string()),
+      pullRequests: v.optional(v.string()),
+      issues: v.optional(v.string()),
+      metadata: v.optional(v.string()),
+    }),
+    repositorySelection: v.union(v.literal("all"), v.literal("selected")),
+    installedAt: v.number(),
+    updatedAt: v.number(),
+    suspendedAt: v.optional(v.number()),
   })
-    .index("by_user", ["userId"])
-    .index("by_github_id", ["githubId"]),
+    .index("by_installation_id", ["installationId"])
+    .index("by_account_login", ["accountLogin"]),
 
-  // Connected repositories (user explicitly granted access)
+  // Repositories from GitHub App
   repos: defineTable({
-    userId: v.id("users"),
-    connectionId: v.id("githubConnections"),
-    // Repo info
+    installationId: v.id("installations"),
     githubRepoId: v.number(),
     owner: v.string(),
     name: v.string(),
-    fullName: v.string(), // "owner/name"
-    description: v.optional(v.string()),
+    fullName: v.string(),
     defaultBranch: v.string(),
     isPrivate: v.boolean(),
-    // Access level
-    permissions: v.object({
-      admin: v.boolean(),
-      push: v.boolean(),
-      pull: v.boolean(),
-      maintain: v.optional(v.boolean()),
-      triage: v.optional(v.boolean()),
-    }),
-    // Timestamps
-    connectedAt: v.number(),
-    lastSyncedAt: v.number(),
+    indexedBranches: v.array(v.string()),
+    lastIndexedAt: v.optional(v.number()),
+    autoReview: v.boolean(),
+    reviewDrafts: v.boolean(),
+    addedAt: v.number(),
+    updatedAt: v.number(),
   })
-    .index("by_user", ["userId"])
-    .index("by_connection", ["connectionId"])
-    .index("by_full_name", ["fullName"])
-    .index("by_github_repo_id", ["githubRepoId"]),
+    .index("by_installation", ["installationId"])
+    .index("by_github_repo_id", ["githubRepoId"])
+    .index("by_full_name", ["fullName"]),
 
-  // PR Reviews
+  // Code chunks with vector embeddings
+  codeChunks: defineTable({
+    repoId: v.id("repos"),
+    branch: v.string(),
+    // Composite key for efficient vector search filtering (industry standard pattern)
+    // Format: "{repoId}:{branch}" - allows single-field AND filtering in vector search
+    repoBranchKey: v.string(),
+    filePath: v.string(),
+    chunkType: v.union(
+      v.literal("function"),
+      v.literal("class"),
+      v.literal("method"),
+      v.literal("interface"),
+      v.literal("type"),
+      v.literal("variable"),
+      v.literal("import"),
+      v.literal("file_summary")
+    ),
+    name: v.string(),
+    code: v.string(),
+    docstring: v.string(),
+    startLine: v.number(),
+    endLine: v.number(),
+    embedding: v.array(v.float64()),
+    language: v.string(),
+    indexedAt: v.number(),
+  })
+    .index("by_repo", ["repoId"])
+    .index("by_repo_branch", ["repoId", "branch"])
+    .index("by_repo_file", ["repoId", "filePath"])
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1536,
+      filterFields: ["repoBranchKey"],
+    }),
+
+  // Webhook events
+  webhookEvents: defineTable({
+    eventType: v.string(),
+    action: v.optional(v.string()),
+    deliveryId: v.string(),
+    installationId: v.optional(v.number()),
+    repositoryId: v.optional(v.number()),
+    summary: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    error: v.optional(v.string()),
+    receivedAt: v.number(),
+    processedAt: v.optional(v.number()),
+  })
+    .index("by_delivery_id", ["deliveryId"])
+    .index("by_status", ["status"]),
+
+  // Auto PR reviews
   reviews: defineTable({
-    userId: v.id("users"),
     repoId: v.id("repos"),
     prNumber: v.number(),
     prTitle: v.string(),
-    prUrl: v.string(),
     prAuthor: v.string(),
+    prUrl: v.string(),
+    baseBranch: v.string(),
+    headBranch: v.string(),
     status: v.union(
       v.literal("pending"),
-      v.literal("in_progress"),
-      v.literal("completed")
+      v.literal("analyzing"),
+      v.literal("reviewing"),
+      v.literal("posting"),
+      v.literal("completed"),
+      v.literal("failed")
     ),
     summary: v.optional(v.string()),
-    createdAt: v.number(),
+    findings: v.optional(
+      v.array(
+        v.object({
+          type: v.string(),
+          severity: v.string(),
+          title: v.string(),
+          description: v.string(),
+          filePath: v.string(),
+          line: v.optional(v.number()),
+          suggestion: v.optional(v.string()),
+        })
+      )
+    ),
+    summaryCommentId: v.optional(v.number()),
+    reviewId: v.optional(v.number()),
+    feedbackScore: v.optional(v.number()),
+    triggeredAt: v.number(),
+    completedAt: v.optional(v.number()),
+    error: v.optional(v.string()),
+  })
+    .index("by_repo", ["repoId"])
+    .index("by_repo_pr", ["repoId", "prNumber"])
+    .index("by_status", ["status"]),
+
+  // Indexing jobs
+  indexingJobs: defineTable({
+    repoId: v.id("repos"),
+    branch: v.string(),
+    workflowId: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("cloning"),
+      v.literal("parsing"),
+      v.literal("embedding"),
+      v.literal("storing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    totalFiles: v.optional(v.number()),
+    processedFiles: v.optional(v.number()),
+    totalChunks: v.optional(v.number()),
+    storedChunks: v.optional(v.number()),
+    triggerType: v.union(
+      v.literal("manual"),
+      v.literal("push"),
+      v.literal("initial")
+    ),
+    commitSha: v.optional(v.string()),
+    error: v.optional(v.string()),
+    startedAt: v.number(),
     completedAt: v.optional(v.number()),
   })
-    .index("by_user", ["userId"])
     .index("by_repo", ["repoId"])
-    .index("by_pr", ["repoId", "prNumber"]),
+    .index("by_repo_branch", ["repoId", "branch"])
+    .index("by_status", ["status"]),
 
-  // Review findings/issues
-  findings: defineTable({
-    reviewId: v.id("reviews"),
-    type: v.union(
-      v.literal("security"),
-      v.literal("bug"),
-      v.literal("performance"),
-      v.literal("code_quality"),
-      v.literal("test_coverage"),
-      v.literal("documentation")
-    ),
-    severity: v.union(
-      v.literal("critical"),
-      v.literal("high"),
-      v.literal("medium"),
-      v.literal("low")
-    ),
-    title: v.string(),
-    description: v.string(),
-    filePath: v.string(),
-    lineStart: v.optional(v.number()),
-    lineEnd: v.optional(v.number()),
-    suggestion: v.optional(v.string()),
-    resolved: v.boolean(),
-    createdAt: v.number(),
-  })
-    .index("by_review", ["reviewId"])
-    .index("by_resolved", ["reviewId", "resolved"]),
-
-  // GitHub comments posted
-  comments: defineTable({
-    reviewId: v.id("reviews"),
-    findingId: v.optional(v.id("findings")),
-    githubCommentId: v.optional(v.number()),
-    body: v.string(),
-    filePath: v.optional(v.string()),
-    line: v.optional(v.number()),
-    postedAt: v.number(),
-  }).index("by_review", ["reviewId"]),
-
-  // Audit log for security
-  auditLog: defineTable({
-    userId: v.id("users"),
-    action: v.string(), // "github_connect", "github_disconnect", "repo_add", "repo_remove", "api_call"
-    details: v.string(), // JSON string with action details
-    ipAddress: v.optional(v.string()),
-    userAgent: v.optional(v.string()),
-    timestamp: v.number(),
-  })
-    .index("by_user", ["userId"])
-    .index("by_timestamp", ["timestamp"]),
-
-  // Imported repository files (stored in Convex, synced to WebContainer)
+  // Files for WebContainer (full file content cache)
   files: defineTable({
     repoId: v.id("repos"),
-    path: v.string(), // e.g., "src/App.tsx"
-    name: v.string(), // e.g., "App.tsx"
+    path: v.string(),
+    name: v.string(),
     type: v.union(v.literal("file"), v.literal("directory")),
-    content: v.optional(v.string()), // File content (null for directories)
-    sha: v.optional(v.string()), // GitHub blob SHA for tracking changes
+    content: v.optional(v.string()),
+    sha: v.optional(v.string()),
     size: v.optional(v.number()),
-    // Change tracking
-    isDirty: v.boolean(), // Modified locally but not committed
-    originalContent: v.optional(v.string()), // Original content before edits
-    // Metadata
-    importedAt: v.number(),
+    isDirty: v.boolean(),
+    createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_repo", ["repoId"])
-    .index("by_repo_path", ["repoId", "path"])
-    .index("by_repo_dirty", ["repoId", "isDirty"]),
+    .index("by_repo_path", ["repoId", "path"]),
 
-  // Import status for tracking background jobs
+  // Import status for tracking repository file imports
   importStatus: defineTable({
     repoId: v.id("repos"),
     status: v.union(
@@ -165,40 +215,12 @@ export default defineSchema({
       v.literal("completed"),
       v.literal("failed")
     ),
-    progress: v.optional(v.number()), // 0-100
+    progress: v.optional(v.number()),
     totalFiles: v.optional(v.number()),
     importedFiles: v.optional(v.number()),
     error: v.optional(v.string()),
-    branch: v.string(),
     startedAt: v.number(),
     completedAt: v.optional(v.number()),
   })
-    .index("by_repo", ["repoId"])
-    .index("by_status", ["status"]),
-
-  // Proposed changes (diffs ready to commit)
-  proposedChanges: defineTable({
-    repoId: v.id("repos"),
-    userId: v.id("users"),
-    title: v.string(),
-    description: v.optional(v.string()),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("committed"),
-      v.literal("discarded")
-    ),
-    // Changes summary
-    filesChanged: v.number(),
-    additions: v.number(),
-    deletions: v.number(),
-    // Commit info (if committed)
-    commitSha: v.optional(v.string()),
-    commitUrl: v.optional(v.string()),
-    // Timestamps
-    createdAt: v.number(),
-    committedAt: v.optional(v.number()),
-  })
-    .index("by_repo", ["repoId"])
-    .index("by_user", ["userId"])
-    .index("by_status", ["repoId", "status"]),
+    .index("by_repo", ["repoId"]),
 });

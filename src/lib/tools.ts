@@ -2,20 +2,102 @@
 
 import { z } from "zod";
 import { TamboTool } from "@tambo-ai/react";
-import { FunctionReturnType } from "convex/server";
-import { api } from "../../convex/_generated/api";
+
+// Type definitions for GitHub API responses
+type PullRequest = {
+  number: number;
+  title: string;
+  body: string | null;
+  state: string;
+  user: { login: string; avatar_url?: string };
+  head: { ref: string; sha: string };
+  base: { ref: string; sha: string };
+  html_url: string;
+  created_at?: string;
+  additions: number;
+  deletions: number;
+  changed_files: number;
+};
+
+type PRFile = {
+  filename: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  patch?: string;
+};
+
+type FileContent = {
+  content: string;
+  sha: string;
+  decodedContent?: string;
+  size?: number;
+  path?: string;
+};
+
+type Review = {
+  id: number;
+  html_url: string;
+  state?: string;
+};
+
+type LineComment = {
+  id: number;
+  html_url?: string;
+  created_at?: string;
+};
+
+type MergeResult = {
+  sha: string;
+  merged: boolean;
+  message: string;
+};
+
+type RepoTree = {
+  tree: Array<{
+    path: string;
+    type: string;
+    sha: string;
+    size?: number;
+  }>;
+  truncated: boolean;
+};
+
+type SearchResult = {
+  total_count: number;
+  items: Array<{
+    name: string;
+    path: string;
+    sha: string;
+    html_url: string;
+  }>;
+};
+
+type PRListItem = {
+  number: number;
+  title: string;
+  state: string;
+  user: { login: string };
+  html_url: string;
+  created_at: string;
+};
+
+type Branch = {
+  name: string;
+  protected: boolean;
+};
 
 type GitHubActions = {
-  getPullRequest: (args: { clerkId: string; owner: string; repo: string; prNumber: number }) => Promise<FunctionReturnType<typeof api.github.getPullRequest>>;
-  getPullRequestFiles: (args: { clerkId: string; owner: string; repo: string; prNumber: number }) => Promise<FunctionReturnType<typeof api.github.getPullRequestFiles>>;
-  getFileContent: (args: { clerkId: string; owner: string; repo: string; path: string; ref?: string }) => Promise<FunctionReturnType<typeof api.github.getFileContent>>;
-  postReviewComment: (args: { clerkId: string; owner: string; repo: string; prNumber: number; body: string; path: string; line: number }) => Promise<FunctionReturnType<typeof api.github.postReviewComment>>;
-  createReview: (args: { clerkId: string; owner: string; repo: string; prNumber: number; event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT"; body?: string }) => Promise<FunctionReturnType<typeof api.github.createReview>>;
-  mergePullRequest: (args: { clerkId: string; owner: string; repo: string; prNumber: number; mergeMethod?: "merge" | "squash" | "rebase" }) => Promise<FunctionReturnType<typeof api.github.mergePullRequest>>;
-  getRepoTree: (args: { clerkId: string; owner: string; repo: string; branch?: string }) => Promise<FunctionReturnType<typeof api.github.getRepoTree>>;
-  searchCode: (args: { clerkId: string; owner: string; repo: string; query: string }) => Promise<FunctionReturnType<typeof api.github.searchCode>>;
-  listPullRequests: (args: { clerkId: string; owner: string; repo: string; state?: "open" | "closed" | "all" }) => Promise<FunctionReturnType<typeof api.github.listPullRequests>>;
-  listBranches: (args: { clerkId: string; owner: string; repo: string }) => Promise<FunctionReturnType<typeof api.github.listBranches>>;
+  getPullRequest: (args: { clerkId: string; owner: string; repo: string; prNumber: number }) => Promise<PullRequest>;
+  getPullRequestFiles: (args: { clerkId: string; owner: string; repo: string; prNumber: number }) => Promise<PRFile[]>;
+  getFileContent: (args: { clerkId: string; owner: string; repo: string; path: string; ref?: string }) => Promise<FileContent>;
+  postReviewComment: (args: { clerkId: string; owner: string; repo: string; prNumber: number; body: string; path?: string; line?: number }) => Promise<LineComment>;
+  createReview: (args: { clerkId: string; owner: string; repo: string; prNumber: number; event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT"; body: string }) => Promise<Review>;
+  mergePullRequest: (args: { clerkId: string; owner: string; repo: string; prNumber: number; mergeMethod?: "merge" | "squash" | "rebase" }) => Promise<MergeResult>;
+  getRepoTree: (args: { clerkId: string; owner: string; repo: string; branch?: string }) => Promise<RepoTree>;
+  searchCode: (args: { clerkId: string; owner: string; repo: string; query: string }) => Promise<SearchResult>;
+  listPullRequests: (args: { clerkId: string; owner: string; repo: string; state?: "open" | "closed" | "all" }) => Promise<PRListItem[]>;
+  listBranches: (args: { clerkId: string; owner: string; repo: string }) => Promise<Branch[]>;
 };
 
 interface GitHubToolsConfig {
@@ -99,14 +181,14 @@ Use this when the user wants to see a specific file or needs context about code.
       sha: z.string(),
       path: z.string(),
     }),
-    tool: async ({ owner, repo, path, ref }) => {
-      const data = await actions.getFileContent({ clerkId, owner, repo, path, ref });
+    tool: async ({ owner, repo, path: filePath, ref }) => {
+      const data = await actions.getFileContent({ clerkId, owner, repo, path: filePath, ref });
 
       return {
-        content: data.decodedContent,
-        size: data.size,
+        content: data.content,
+        size: data.content.length,
         sha: data.sha,
-        path: data.path,
+        path: filePath,
       };
     },
   };
@@ -141,8 +223,8 @@ Use this when the user wants to add a comment about specific code.`,
 
       return {
         id: comment.id,
-        url: comment.html_url,
-        createdAt: comment.created_at,
+        url: comment.html_url || "",
+        createdAt: comment.created_at || new Date().toISOString(),
       };
     },
   };
@@ -170,12 +252,12 @@ Use this when the user wants to approve a PR or request changes.`,
         repo,
         prNumber,
         event,
-        body,
+        body: body || "",
       });
 
       return {
         id: review.id,
-        state: review.state,
+        state: event,
         url: review.html_url,
       };
     },

@@ -127,7 +127,7 @@ export default function Home() {
   );
 
   const listPullRequests = useAction(api.github.listPullRequests);
-  const getPullRequestFiles = useAction(api.github.getPullRequestFiles);
+  const getPullRequestFiles = useAction(api.github.getPullRequestFilesPublic);
   const importRepository = useAction(api.fileActions.importRepository);
 
   // Import state
@@ -267,24 +267,14 @@ export default function Home() {
         });
 
         const mappedPRs: PullRequest[] = prs.map(
-          (pr: {
-            number: number;
-            title: string;
-            user: { login: string };
-            state: string;
-            additions: number;
-            deletions: number;
-            changed_files: number;
-            created_at: string;
-            merged_at?: string;
-          }) => ({
+          (pr) => ({
             number: pr.number,
             title: pr.title,
             author: pr.user?.login || "unknown",
             state: pr.merged_at ? "merged" : (pr.state as "open" | "closed"),
-            additions: pr.additions || 0,
-            deletions: pr.deletions || 0,
-            changedFiles: pr.changed_files || 0,
+            additions: pr.additions ?? undefined,
+            deletions: pr.deletions ?? undefined,
+            changedFiles: pr.changed_files ?? undefined,
             createdAt: pr.created_at,
           })
         );

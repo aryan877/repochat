@@ -3,22 +3,11 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useUser, SignInButton } from "@clerk/nextjs";
-import { useQuery, useAction, useMutation } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import Link from "next/link";
 
-type Step = "connect" | "repos" | "complete";
-
-interface Repository {
-  id: number;
-  name: string;
-  full_name: string;
-  private: boolean;
-  description: string | null;
-  default_branch: string;
-  owner: { login: string };
-  permissions?: { admin: boolean; push: boolean; pull: boolean };
-}
+type Step = "signin" | "install" | "link" | "complete";
 
 const GitHubMark = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -27,15 +16,8 @@ const GitHubMark = () => (
 );
 
 const CheckIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="20 6 9 17 4 12" />
-  </svg>
-);
-
-const LockIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-    <path d="M7 11V7a5 5 0 0110 0v4" />
   </svg>
 );
 
@@ -48,97 +30,86 @@ const Spinner = () => (
 
 export function GitHubOnboarding({ onComplete, showBackButton }: { onComplete?: () => void; showBackButton?: boolean }) {
   const { user, isLoaded } = useUser();
-  const [currentStep, setCurrentStep] = useState<Step>("connect");
-  const [isLoadingRepos, setIsLoadingRepos] = useState(false);
+  const [currentStep, setCurrentStep] = useState<Step>("signin");
+  const [isLinking, setIsLinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [repos, setRepos] = useState<Repository[]>([]);
-  const [selectedRepos, setSelectedRepos] = useState<Set<number>>(new Set());
 
+  // Get GitHub connection status
   const githubStatus = useQuery(
     api.users.getGitHubStatus,
     user?.id ? { clerkId: user.id } : "skip"
   );
 
-  const getUserRepos = useAction(api.github.getUserRepos);
-  const connectRepo = useMutation(api.users.connectRepo);
-  const disconnectGitHub = useMutation(api.users.disconnectGitHub);
+  // Get available installations (ones not yet linked to a user)
+  const installations = useQuery(api.repos.listInstallations);
 
+  // Get repos for linked user
+  const connectedRepos = useQuery(
+    api.users.getConnectedRepos,
+    user?.id ? { clerkId: user.id } : "skip"
+  );
+
+  // Mutations
+  const linkInstallation = useMutation(api.users.linkGitHubInstallation);
+  const unlinkGitHub = useMutation(api.users.unlinkGitHub);
+  const getOrCreateUser = useMutation(api.users.getOrCreateUser);
+
+  // Ensure user exists in our DB
   useEffect(() => {
-    if (githubStatus?.connected) {
-      setCurrentStep("repos");
-      loadRepos();
+    if (user?.id) {
+      getOrCreateUser({
+        clerkId: user.id,
+        email: user.primaryEmailAddress?.emailAddress,
+        name: user.fullName ?? undefined,
+        avatarUrl: user.imageUrl,
+      });
     }
-  }, [githubStatus]);
+  }, [user?.id, user?.primaryEmailAddress?.emailAddress, user?.fullName, user?.imageUrl, getOrCreateUser]);
 
-  const loadRepos = async () => {
+  // Determine current step
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    if (!user) {
+      setCurrentStep("signin");
+    } else if (githubStatus?.connected) {
+      setCurrentStep("complete");
+      setTimeout(() => onComplete?.(), 1000);
+    } else if (installations && installations.length > 0) {
+      setCurrentStep("link");
+    } else {
+      setCurrentStep("install");
+    }
+  }, [isLoaded, user, githubStatus?.connected, installations, onComplete]);
+
+  const handleInstallApp = () => {
+    // Redirect to GitHub App installation page
+    const appSlug = process.env.NEXT_PUBLIC_GITHUB_APP_SLUG || "repochat-app";
+    window.location.href = `https://github.com/apps/${appSlug}/installations/new`;
+  };
+
+  const handleLinkInstallation = async (installationId: number, username: string, avatarUrl?: string) => {
     if (!user?.id) return;
-    setIsLoadingRepos(true);
+    setIsLinking(true);
     setError(null);
+
     try {
-      const reposData = await getUserRepos({ clerkId: user.id });
-      setRepos(reposData as Repository[]);
-    } catch {
-      setError("Failed to load repositories");
+      await linkInstallation({
+        clerkId: user.id,
+        installationId,
+        githubUsername: username,
+        githubAvatarUrl: avatarUrl,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to link installation");
     } finally {
-      setIsLoadingRepos(false);
+      setIsLinking(false);
     }
-  };
-
-  const handleGitHubLogin = () => {
-    const clientId = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID;
-    if (!clientId) {
-      setError("GitHub OAuth not configured");
-      return;
-    }
-    const redirectUri = `${window.location.origin}/auth/callback`;
-    const scope = "repo read:user";
-    const authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}`;
-    window.location.href = authUrl;
-  };
-
-  const toggleRepo = (id: number) => {
-    setSelectedRepos((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
-
-  const handleComplete = async () => {
-    if (!user?.id) return;
-
-    for (const repoId of selectedRepos) {
-      const repo = repos.find((r) => r.id === repoId);
-      if (repo) {
-        await connectRepo({
-          clerkId: user.id,
-          githubRepoId: repo.id,
-          owner: repo.owner.login,
-          name: repo.name,
-          description: repo.description ?? undefined,
-          defaultBranch: repo.default_branch,
-          isPrivate: repo.private,
-          permissions: repo.permissions ?? { admin: false, push: false, pull: true },
-        });
-      }
-    }
-
-    setCurrentStep("complete");
-    setTimeout(() => {
-      onComplete?.();
-    }, 1500);
   };
 
   const handleDisconnect = async () => {
     if (!user?.id) return;
-    await disconnectGitHub({ clerkId: user.id });
-    setCurrentStep("connect");
-    setRepos([]);
-    setSelectedRepos(new Set());
+    await unlinkGitHub({ clerkId: user.id });
   };
 
   if (!isLoaded) {
@@ -158,15 +129,8 @@ export function GitHubOnboarding({ onComplete, showBackButton }: { onComplete?: 
         className="w-full max-w-md"
       >
         {showBackButton && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="mb-6"
-          >
-            <Link
-              href="/"
-              className="text-sm text-[#525252] hover:text-[#a3a3a3] transition-colors"
-            >
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-6">
+            <Link href="/" className="text-sm text-[#525252] hover:text-[#a3a3a3] transition-colors">
               ← Back to chat
             </Link>
           </motion.div>
@@ -192,140 +156,105 @@ export function GitHubOnboarding({ onComplete, showBackButton }: { onComplete?: 
         </div>
 
         <AnimatePresence mode="wait">
-          {currentStep === "connect" && (
+          {/* Step 1: Sign In */}
+          {currentStep === "signin" && (
             <motion.div
-              key="connect"
+              key="signin"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.3 }}
               className="space-y-4"
             >
-              {!user ? (
-                <>
-                  <SignInButton mode="modal">
-                    <button className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-[#fafafa] text-[#0a0a0a] rounded-lg font-medium text-sm hover:bg-[#e5e5e5] transition-colors duration-200">
-                      Sign in to get started
-                    </button>
-                  </SignInButton>
-                  <p className="text-xs text-[#525252] text-center">
-                    Sign in first, then connect your GitHub
-                  </p>
-                </>
-              ) : (
-                <>
-                  <button
-                    onClick={handleGitHubLogin}
-                    className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-[#fafafa] text-[#0a0a0a] rounded-lg font-medium text-sm hover:bg-[#e5e5e5] transition-colors duration-200"
-                  >
-                    <GitHubMark />
-                    Connect GitHub
-                  </button>
-                  <p className="text-xs text-[#525252] text-center">
-                    We&apos;ll request access to your repositories
-                  </p>
-                </>
-              )}
-
-              {error && (
-                <motion.p
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="text-sm text-red-400 text-center"
-                >
-                  {error}
-                </motion.p>
-              )}
+              <SignInButton mode="modal">
+                <button className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-[#fafafa] text-[#0a0a0a] rounded-lg font-medium text-sm hover:bg-[#e5e5e5] transition-colors">
+                  Sign in to get started
+                </button>
+              </SignInButton>
+              <p className="text-xs text-[#525252] text-center">
+                Sign in first, then connect your GitHub
+              </p>
             </motion.div>
           )}
 
-          {currentStep === "repos" && (
+          {/* Step 2: Install GitHub App */}
+          {currentStep === "install" && (
             <motion.div
-              key="repos"
+              key="install"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.3 }}
               className="space-y-4"
             >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-[#a3a3a3]">
-                    Connected as{" "}
-                    <span className="text-[#fafafa]">@{githubStatus?.github?.username}</span>
-                  </p>
-                </div>
-                <button
-                  onClick={handleDisconnect}
-                  className="text-xs text-[#525252] hover:text-[#a3a3a3] transition-colors"
-                >
-                  Disconnect
-                </button>
+              <button
+                onClick={handleInstallApp}
+                className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-[#fafafa] text-[#0a0a0a] rounded-lg font-medium text-sm hover:bg-[#e5e5e5] transition-colors"
+              >
+                <GitHubMark />
+                Install GitHub App
+              </button>
+              <p className="text-xs text-[#525252] text-center">
+                Install the RepoChat GitHub App and select repositories
+              </p>
+
+              <div className="mt-6 p-4 bg-[#141414] rounded-lg">
+                <p className="text-xs text-[#a3a3a3] mb-2">After installing:</p>
+                <ul className="text-xs text-[#525252] space-y-1">
+                  <li>• Select which repositories to grant access</li>
+                  <li>• Return here to complete setup</li>
+                  <li>• Auto PR reviews will be enabled</li>
+                </ul>
               </div>
+            </motion.div>
+          )}
 
-              <div className="h-px bg-[#1f1f1f]" />
+          {/* Step 3: Link Installation */}
+          {currentStep === "link" && (
+            <motion.div
+              key="link"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="space-y-4"
+            >
+              <p className="text-sm text-[#a3a3a3] text-center">
+                Select a GitHub account to connect
+              </p>
 
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-[#525252]">Select repositories</p>
-                <button
-                  onClick={loadRepos}
-                  disabled={isLoadingRepos}
-                  className="text-xs text-[#525252] hover:text-[#a3a3a3] transition-colors flex items-center gap-1"
-                >
-                  {isLoadingRepos && <Spinner />}
-                  Refresh
-                </button>
+              <div className="space-y-2">
+                {installations?.map((installation) => (
+                  <button
+                    key={installation._id}
+                    onClick={() =>
+                      handleLinkInstallation(
+                        installation.installationId,
+                        installation.accountLogin,
+                        installation.accountAvatarUrl
+                      )
+                    }
+                    disabled={isLinking}
+                    className="w-full flex items-center gap-3 px-4 py-3 bg-[#141414] hover:bg-[#1f1f1f] rounded-lg transition-colors"
+                  >
+                    {installation.accountAvatarUrl ? (
+                      <img
+                        src={installation.accountAvatarUrl}
+                        alt={installation.accountLogin}
+                        className="w-8 h-8 rounded-full"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-[#292929] flex items-center justify-center">
+                        <GitHubMark />
+                      </div>
+                    )}
+                    <div className="flex-1 text-left">
+                      <p className="text-sm text-[#fafafa]">@{installation.accountLogin}</p>
+                      <p className="text-xs text-[#525252]">
+                        {installation.accountType} • {installation.repositorySelection === "all" ? "All repos" : "Selected repos"}
+                      </p>
+                    </div>
+                    {isLinking && <Spinner />}
+                  </button>
+                ))}
               </div>
-
-              {isLoadingRepos ? (
-                <div className="flex items-center justify-center py-12">
-                  <Spinner />
-                </div>
-              ) : (
-                <div className="max-h-[320px] overflow-y-auto space-y-1">
-                  {repos.map((repo, idx) => (
-                    <motion.button
-                      key={repo.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: idx * 0.02 }}
-                      onClick={() => toggleRepo(repo.id)}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-150 text-left ${
-                        selectedRepos.has(repo.id)
-                          ? "bg-[#1f1f1f]"
-                          : "hover:bg-[#141414]"
-                      }`}
-                    >
-                      <div
-                        className={`w-4 h-4 rounded flex items-center justify-center transition-colors ${
-                          selectedRepos.has(repo.id)
-                            ? "bg-[#fafafa] text-[#0a0a0a]"
-                            : "border border-[#292929]"
-                        }`}
-                      >
-                        {selectedRepos.has(repo.id) && <CheckIcon />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-[#fafafa] truncate">
-                            {repo.name}
-                          </span>
-                          {repo.private && (
-                            <span className="text-[#525252]">
-                              <LockIcon />
-                            </span>
-                          )}
-                        </div>
-                        {repo.description && (
-                          <p className="text-xs text-[#525252] truncate mt-0.5">
-                            {repo.description}
-                          </p>
-                        )}
-                      </div>
-                    </motion.button>
-                  ))}
-                </div>
-              )}
 
               {error && (
                 <p className="text-sm text-red-400 text-center">{error}</p>
@@ -333,41 +262,71 @@ export function GitHubOnboarding({ onComplete, showBackButton }: { onComplete?: 
 
               <div className="h-px bg-[#1f1f1f]" />
 
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-[#525252]">
-                  {selectedRepos.size} selected
-                </span>
-                <button
-                  onClick={handleComplete}
-                  disabled={selectedRepos.size === 0}
-                  className="px-4 py-2 bg-[#fafafa] text-[#0a0a0a] rounded-lg text-sm font-medium hover:bg-[#e5e5e5] disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
-                >
-                  Continue
-                </button>
-              </div>
+              <button
+                onClick={handleInstallApp}
+                className="w-full text-sm text-[#525252] hover:text-[#a3a3a3] transition-colors"
+              >
+                Install on another account →
+              </button>
             </motion.div>
           )}
 
+          {/* Step 4: Complete */}
           {currentStep === "complete" && (
             <motion.div
               key="complete"
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.4 }}
-              className="py-8 text-center"
+              className="space-y-6"
             >
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.1, type: "spring", stiffness: 200, damping: 15 }}
-                className="w-12 h-12 mx-auto mb-4 rounded-full bg-[#1f1f1f] flex items-center justify-center"
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fafafa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              </motion.div>
-              <h2 className="text-lg font-medium text-[#fafafa]">Ready</h2>
-              <p className="text-sm text-[#525252] mt-1">Redirecting...</p>
+              <div className="text-center">
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ delay: 0.1, type: "spring", stiffness: 200, damping: 15 }}
+                  className="w-12 h-12 mx-auto mb-4 rounded-full bg-[#1f1f1f] flex items-center justify-center text-[#fafafa]"
+                >
+                  <CheckIcon />
+                </motion.div>
+                <h2 className="text-lg font-medium text-[#fafafa]">Connected</h2>
+                <p className="text-sm text-[#525252] mt-1">
+                  @{githubStatus?.github?.username}
+                </p>
+              </div>
+
+              {connectedRepos && connectedRepos.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs text-[#525252]">Connected repositories:</p>
+                  <div className="max-h-[200px] overflow-y-auto space-y-1">
+                    {connectedRepos.map((repo) => (
+                      <div
+                        key={repo._id}
+                        className="flex items-center justify-between px-3 py-2 bg-[#141414] rounded-lg"
+                      >
+                        <span className="text-sm text-[#a3a3a3] truncate">{repo.fullName}</span>
+                        {repo.autoReview && (
+                          <span className="text-xs text-[#525252]">Auto-review</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Link
+                  href="/"
+                  className="flex-1 px-4 py-2 bg-[#fafafa] text-[#0a0a0a] rounded-lg text-sm font-medium text-center hover:bg-[#e5e5e5] transition-colors"
+                >
+                  Start chatting
+                </Link>
+                <button
+                  onClick={handleDisconnect}
+                  className="px-4 py-2 text-sm text-[#525252] hover:text-[#a3a3a3] transition-colors"
+                >
+                  Disconnect
+                </button>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

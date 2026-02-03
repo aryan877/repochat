@@ -1,155 +1,66 @@
 import { v } from "convex/values";
-import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
-
-// =============================================================================
-// QUERIES
-// =============================================================================
+import { mutation, query, internalMutation } from "./_generated/server";
+import { Id } from "./_generated/dataModel";
 
 // Get all files for a repository
 export const getRepoFiles = query({
-  args: {
-    repoId: v.id("repos"),
-  },
-  handler: async (ctx, args) => {
+  args: { repoId: v.id("repos") },
+  handler: async (ctx, { repoId }) => {
     return await ctx.db
       .query("files")
-      .withIndex("by_repo", (q) => q.eq("repoId", args.repoId))
-      .collect();
-  },
-});
-
-// Get a single file by path
-export const getFile = query({
-  args: {
-    repoId: v.id("repos"),
-    path: v.string(),
-  },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("files")
-      .withIndex("by_repo_path", (q) =>
-        q.eq("repoId", args.repoId).eq("path", args.path)
-      )
-      .first();
-  },
-});
-
-// Get all dirty (modified) files for a repository
-export const getDirtyFiles = query({
-  args: {
-    repoId: v.id("repos"),
-  },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("files")
-      .withIndex("by_repo_dirty", (q) =>
-        q.eq("repoId", args.repoId).eq("isDirty", true)
-      )
+      .withIndex("by_repo", (q) => q.eq("repoId", repoId))
       .collect();
   },
 });
 
 // Get import status for a repository
 export const getImportStatus = query({
-  args: {
-    repoId: v.id("repos"),
-  },
-  handler: async (ctx, args) => {
+  args: { repoId: v.id("repos") },
+  handler: async (ctx, { repoId }) => {
     return await ctx.db
       .query("importStatus")
-      .withIndex("by_repo", (q) => q.eq("repoId", args.repoId))
-      .order("desc")
+      .withIndex("by_repo", (q) => q.eq("repoId", repoId))
       .first();
   },
 });
 
-// Get file tree structure for UI
-export const getFileTree = query({
+// Get a specific file by path
+export const getFile = query({
   args: {
     repoId: v.id("repos"),
+    path: v.string(),
   },
-  handler: async (ctx, args) => {
-    const files = await ctx.db
+  handler: async (ctx, { repoId, path }) => {
+    return await ctx.db
       .query("files")
-      .withIndex("by_repo", (q) => q.eq("repoId", args.repoId))
-      .collect();
-
-    interface TreeNode {
-      name: string;
-      path: string;
-      type: "file" | "directory";
-      children?: TreeNode[];
-      isDirty?: boolean;
-    }
-
-    const tree: TreeNode[] = [];
-    const pathMap = new Map<string, TreeNode>();
-
-    // Sort by path depth
-    const sorted = [...files].sort(
-      (a, b) => a.path.split("/").length - b.path.split("/").length
-    );
-
-    for (const file of sorted) {
-      const node: TreeNode = {
-        name: file.name,
-        path: file.path,
-        type: file.type,
-        isDirty: file.isDirty,
-      };
-
-      if (file.type === "directory") {
-        node.children = [];
-      }
-
-      const parentPath = file.path.split("/").slice(0, -1).join("/");
-
-      if (parentPath && pathMap.has(parentPath)) {
-        pathMap.get(parentPath)!.children?.push(node);
-      } else {
-        tree.push(node);
-      }
-
-      pathMap.set(file.path, node);
-    }
-
-    return tree;
+      .withIndex("by_repo_path", (q) => q.eq("repoId", repoId).eq("path", path))
+      .first();
   },
 });
 
-// =============================================================================
-// MUTATIONS
-// =============================================================================
-
-// Update file content (marks as dirty)
+// Update a file (marks as dirty)
 export const updateFile = mutation({
   args: {
     repoId: v.id("repos"),
     path: v.string(),
     content: v.string(),
   },
-  handler: async (ctx, args) => {
-    const file = await ctx.db
+  handler: async (ctx, { repoId, path, content }) => {
+    const existing = await ctx.db
       .query("files")
-      .withIndex("by_repo_path", (q) =>
-        q.eq("repoId", args.repoId).eq("path", args.path)
-      )
+      .withIndex("by_repo_path", (q) => q.eq("repoId", repoId).eq("path", path))
       .first();
 
-    if (!file) {
-      throw new Error(`File not found: ${args.path}`);
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        content,
+        isDirty: true,
+        updatedAt: Date.now(),
+      });
+      return existing._id;
     }
 
-    const originalContent = file.isDirty ? file.originalContent : file.content;
-
-    await ctx.db.patch(file._id, {
-      content: args.content,
-      isDirty: true,
-      originalContent,
-      updatedAt: Date.now(),
-    });
-
-    return { success: true };
+    throw new Error(`File not found: ${path}`);
   },
 });
 
@@ -160,58 +71,20 @@ export const createFile = mutation({
     path: v.string(),
     content: v.string(),
   },
-  handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("files")
-      .withIndex("by_repo_path", (q) =>
-        q.eq("repoId", args.repoId).eq("path", args.path)
-      )
-      .first();
+  handler: async (ctx, { repoId, path, content }) => {
+    const parts = path.split("/");
+    const name = parts[parts.length - 1];
 
-    if (existing) {
-      throw new Error(`File already exists: ${args.path}`);
-    }
-
-    const name = args.path.split("/").pop() || args.path;
-    const now = Date.now();
-
-    // Ensure parent directories exist
-    const parts = args.path.split("/");
-    for (let i = 1; i < parts.length; i++) {
-      const dirPath = parts.slice(0, i).join("/");
-      const dirExists = await ctx.db
-        .query("files")
-        .withIndex("by_repo_path", (q) =>
-          q.eq("repoId", args.repoId).eq("path", dirPath)
-        )
-        .first();
-
-      if (!dirExists) {
-        await ctx.db.insert("files", {
-          repoId: args.repoId,
-          path: dirPath,
-          name: parts[i - 1],
-          type: "directory",
-          isDirty: true,
-          importedAt: now,
-          updatedAt: now,
-        });
-      }
-    }
-
-    await ctx.db.insert("files", {
-      repoId: args.repoId,
-      path: args.path,
+    return await ctx.db.insert("files", {
+      repoId,
+      path,
       name,
       type: "file",
-      content: args.content,
+      content,
       isDirty: true,
-      size: args.content.length,
-      importedAt: now,
-      updatedAt: now,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     });
-
-    return { success: true };
   },
 });
 
@@ -221,162 +94,22 @@ export const deleteFile = mutation({
     repoId: v.id("repos"),
     path: v.string(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, { repoId, path }) => {
     const file = await ctx.db
       .query("files")
-      .withIndex("by_repo_path", (q) =>
-        q.eq("repoId", args.repoId).eq("path", args.path)
-      )
+      .withIndex("by_repo_path", (q) => q.eq("repoId", repoId).eq("path", path))
       .first();
 
-    if (!file) {
-      throw new Error(`File not found: ${args.path}`);
-    }
-
-    // If directory, delete all children
-    if (file.type === "directory") {
-      const allFiles = await ctx.db
-        .query("files")
-        .withIndex("by_repo", (q) => q.eq("repoId", args.repoId))
-        .collect();
-
-      for (const child of allFiles) {
-        if (child.path.startsWith(args.path + "/")) {
-          await ctx.db.delete(child._id);
-        }
-      }
-    }
-
-    await ctx.db.delete(file._id);
-    return { success: true };
-  },
-});
-
-// Discard changes to a file
-export const discardFileChanges = mutation({
-  args: {
-    repoId: v.id("repos"),
-    path: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const file = await ctx.db
-      .query("files")
-      .withIndex("by_repo_path", (q) =>
-        q.eq("repoId", args.repoId).eq("path", args.path)
-      )
-      .first();
-
-    if (!file || !file.isDirty) {
-      return { success: true };
-    }
-
-    await ctx.db.patch(file._id, {
-      content: file.originalContent,
-      isDirty: false,
-      originalContent: undefined,
-      updatedAt: Date.now(),
-    });
-
-    return { success: true };
-  },
-});
-
-// Discard all changes
-export const discardAllChanges = mutation({
-  args: {
-    repoId: v.id("repos"),
-  },
-  handler: async (ctx, args) => {
-    const dirtyFiles = await ctx.db
-      .query("files")
-      .withIndex("by_repo_dirty", (q) =>
-        q.eq("repoId", args.repoId).eq("isDirty", true)
-      )
-      .collect();
-
-    for (const file of dirtyFiles) {
-      if (file.originalContent !== undefined) {
-        await ctx.db.patch(file._id, {
-          content: file.originalContent,
-          isDirty: false,
-          originalContent: undefined,
-          updatedAt: Date.now(),
-        });
-      } else {
-        await ctx.db.delete(file._id);
-      }
-    }
-
-    return { success: true, filesReverted: dirtyFiles.length };
-  },
-});
-
-// Clear all files for a repository
-export const clearRepoFiles = mutation({
-  args: {
-    repoId: v.id("repos"),
-  },
-  handler: async (ctx, args) => {
-    const files = await ctx.db
-      .query("files")
-      .withIndex("by_repo", (q) => q.eq("repoId", args.repoId))
-      .collect();
-
-    for (const file of files) {
+    if (file) {
       await ctx.db.delete(file._id);
     }
-
-    return { success: true, filesDeleted: files.length };
   },
 });
 
-// Mark files as clean after commit
-export const markFilesClean = mutation({
+// Internal: Create or update import status
+export const upsertImportStatus = internalMutation({
   args: {
     repoId: v.id("repos"),
-  },
-  handler: async (ctx, args) => {
-    const dirtyFiles = await ctx.db
-      .query("files")
-      .withIndex("by_repo_dirty", (q) =>
-        q.eq("repoId", args.repoId).eq("isDirty", true)
-      )
-      .collect();
-
-    for (const file of dirtyFiles) {
-      await ctx.db.patch(file._id, {
-        isDirty: false,
-        originalContent: undefined,
-        updatedAt: Date.now(),
-      });
-    }
-
-    return { success: true };
-  },
-});
-
-// =============================================================================
-// INTERNAL MUTATIONS (for import process)
-// =============================================================================
-
-export const createImportStatus = internalMutation({
-  args: {
-    repoId: v.id("repos"),
-    branch: v.string(),
-  },
-  handler: async (ctx, args) => {
-    return await ctx.db.insert("importStatus", {
-      repoId: args.repoId,
-      status: "pending",
-      branch: args.branch,
-      startedAt: Date.now(),
-    });
-  },
-});
-
-export const updateImportStatus = internalMutation({
-  args: {
-    statusId: v.id("importStatus"),
     status: v.union(
       v.literal("pending"),
       v.literal("importing"),
@@ -388,22 +121,37 @@ export const updateImportStatus = internalMutation({
     importedFiles: v.optional(v.number()),
     error: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
-    const updates: Record<string, unknown> = { status: args.status };
+  handler: async (ctx, { repoId, status, progress, totalFiles, importedFiles, error }) => {
+    const existing = await ctx.db
+      .query("importStatus")
+      .withIndex("by_repo", (q) => q.eq("repoId", repoId))
+      .first();
 
-    if (args.progress !== undefined) updates.progress = args.progress;
-    if (args.totalFiles !== undefined) updates.totalFiles = args.totalFiles;
-    if (args.importedFiles !== undefined) updates.importedFiles = args.importedFiles;
-    if (args.error !== undefined) updates.error = args.error;
-    if (args.status === "completed" || args.status === "failed") {
-      updates.completedAt = Date.now();
+    const now = Date.now();
+    const data = {
+      repoId,
+      status,
+      progress,
+      totalFiles,
+      importedFiles,
+      error,
+      ...(status === "completed" || status === "failed" ? { completedAt: now } : {}),
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, data);
+      return existing._id;
     }
 
-    await ctx.db.patch(args.statusId, updates);
+    return await ctx.db.insert("importStatus", {
+      ...data,
+      startedAt: now,
+    });
   },
 });
 
-export const insertFile = internalMutation({
+// Internal: Store a file during import
+export const storeFile = internalMutation({
   args: {
     repoId: v.id("repos"),
     path: v.string(),
@@ -413,75 +161,48 @@ export const insertFile = internalMutation({
     sha: v.optional(v.string()),
     size: v.optional(v.number()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, { repoId, path, name, type, content, sha, size }) => {
+    const existing = await ctx.db
+      .query("files")
+      .withIndex("by_repo_path", (q) => q.eq("repoId", repoId).eq("path", path))
+      .first();
+
     const now = Date.now();
-    await ctx.db.insert("files", {
-      repoId: args.repoId,
-      path: args.path,
-      name: args.name,
-      type: args.type,
-      content: args.content,
-      sha: args.sha,
-      size: args.size,
+    const data = {
+      repoId,
+      path,
+      name,
+      type,
+      content,
+      sha,
+      size,
       isDirty: false,
-      importedAt: now,
+    };
+
+    if (existing) {
+      await ctx.db.patch(existing._id, { ...data, updatedAt: now });
+      return existing._id;
+    }
+
+    return await ctx.db.insert("files", {
+      ...data,
+      createdAt: now,
       updatedAt: now,
     });
   },
 });
 
-export const clearRepoFilesInternal = internalMutation({
-  args: {
-    repoId: v.id("repos"),
-  },
-  handler: async (ctx, args) => {
+// Internal: Clear all files for a repo
+export const clearRepoFiles = internalMutation({
+  args: { repoId: v.id("repos") },
+  handler: async (ctx, { repoId }) => {
     const files = await ctx.db
       .query("files")
-      .withIndex("by_repo", (q) => q.eq("repoId", args.repoId))
+      .withIndex("by_repo", (q) => q.eq("repoId", repoId))
       .collect();
 
     for (const file of files) {
       await ctx.db.delete(file._id);
     }
-
-    return { filesDeleted: files.length };
-  },
-});
-
-export const getDirtyFilesInternal = internalQuery({
-  args: {
-    repoId: v.id("repos"),
-  },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("files")
-      .withIndex("by_repo_dirty", (q) =>
-        q.eq("repoId", args.repoId).eq("isDirty", true)
-      )
-      .collect();
-  },
-});
-
-export const markFilesCleanInternal = internalMutation({
-  args: {
-    repoId: v.id("repos"),
-  },
-  handler: async (ctx, args) => {
-    const dirtyFiles = await ctx.db
-      .query("files")
-      .withIndex("by_repo_dirty", (q) =>
-        q.eq("repoId", args.repoId).eq("isDirty", true)
-      )
-      .collect();
-
-    for (const file of dirtyFiles) {
-      await ctx.db.patch(file._id, {
-        isDirty: false,
-        originalContent: undefined,
-        updatedAt: Date.now(),
-      });
-    }
-
-    return { success: true };
   },
 });

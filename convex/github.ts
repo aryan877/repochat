@@ -1,217 +1,272 @@
 "use node";
 
+import { v } from "convex/values";
 import { action, internalAction, ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { v } from "convex/values";
-import { Id } from "./_generated/dataModel";
+import { Octokit } from "@octokit/rest";
+import { createAppAuth } from "@octokit/auth-app";
 
-const GITHUB_API = "https://api.github.com";
+// ============================================================
+// OCTOKIT CLIENT FACTORY
+// ============================================================
 
-async function githubFetch(endpoint: string, token: string, options: RequestInit = {}): Promise<any> {
-  const response = await fetch(`${GITHUB_API}${endpoint}`, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/vnd.github.v3+json",
-      "User-Agent": "RepoChat",
-      ...options.headers,
-    },
-  });
+function createOctokitForInstallation(installationId: number): Octokit {
+  const appId = process.env.GITHUB_APP_ID;
+  const privateKey = process.env.GITHUB_APP_PRIVATE_KEY;
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`GitHub API error: ${response.status} - ${error}`);
+  if (!appId || !privateKey) {
+    throw new Error("GitHub App credentials not configured");
   }
 
-  return response.json();
+  // Handle escaped newlines in private key
+  const formattedKey = privateKey.replace(/\\n/g, "\n");
+
+  return new Octokit({
+    authStrategy: createAppAuth,
+    auth: {
+      appId,
+      privateKey: formattedKey,
+      installationId,
+    },
+  });
 }
 
-async function getToken(ctx: ActionCtx, clerkId: string): Promise<string> {
-  const user = await ctx.runQuery(internal.githubHelpers.getUserByClerkId, { clerkId }) as { _id: Id<"users"> } | null;
-  if (!user) throw new Error("User not found");
-
-  const connection = await ctx.runQuery(internal.githubHelpers.getConnection, { userId: user._id }) as { accessToken: string } | null;
-  if (!connection) throw new Error("GitHub not connected");
-
-  return connection.accessToken;
+// Helper to get user's installation ID
+async function getUserInstallation(
+  ctx: ActionCtx,
+  clerkId: string
+): Promise<number> {
+  const installationId = await ctx.runQuery(
+    internal.githubHelpers.getUserInstallationIdInternal,
+    { clerkId }
+  );
+  if (!installationId) {
+    throw new Error("GitHub not connected. Please connect your GitHub account first.");
+  }
+  return installationId;
 }
 
-export const getAuthenticatedUser = action({
-  args: { clerkId: v.string() },
-  handler: async (ctx, { clerkId }) => {
-    const token = await getToken(ctx, clerkId);
-    return await githubFetch("/user", token);
+// ============================================================
+// INTERNAL ACTIONS (for webhooks and indexing)
+// ============================================================
+
+// Get installation access token (legacy - kept for compatibility)
+export const getInstallationToken = internalAction({
+  args: { installationId: v.number() },
+  handler: async (_, { installationId }): Promise<string> => {
+    const octokit = createOctokitForInstallation(installationId);
+    const auth = await octokit.auth({ type: "installation" }) as { token: string };
+    return auth.token;
   },
 });
 
-export const getUserRepos = action({
+// Get repository content tree (for indexing) - with pagination
+export const getRepoContent = internalAction({
   args: {
-    clerkId: v.string(),
-    perPage: v.optional(v.number()),
-    page: v.optional(v.number()),
+    installationId: v.number(),
+    owner: v.string(),
+    repo: v.string(),
+    branch: v.string(),
   },
-  handler: async (ctx, { clerkId, perPage, page }) => {
-    const token = await getToken(ctx, clerkId);
-    const params = new URLSearchParams({
-      type: "all",
-      sort: "updated",
-      per_page: String(perPage || 100),
-      page: String(page || 1),
+  handler: async (_, { installationId, owner, repo, branch }) => {
+    const octokit = createOctokitForInstallation(installationId);
+
+    const { data } = await octokit.git.getTree({
+      owner,
+      repo,
+      tree_sha: branch,
+      recursive: "true",
     });
-    return await githubFetch(`/user/repos?${params}`, token);
+
+    return {
+      tree: data.tree.map((item) => ({
+        path: item.path || "",
+        type: item.type || "",
+        sha: item.sha || "",
+        size: item.size,
+      })),
+      truncated: data.truncated || false,
+    };
   },
 });
 
-export const getPullRequest = action({
+// Get file content (internal)
+export const getFileContent = internalAction({
   args: {
-    clerkId: v.string(),
-    owner: v.string(),
-    repo: v.string(),
-    prNumber: v.number(),
-  },
-  handler: async (ctx, { clerkId, owner, repo, prNumber }) => {
-    const token = await getToken(ctx, clerkId);
-    return await githubFetch(`/repos/${owner}/${repo}/pulls/${prNumber}`, token);
-  },
-});
-
-export const getPullRequestFiles = action({
-  args: {
-    clerkId: v.string(),
-    owner: v.string(),
-    repo: v.string(),
-    prNumber: v.number(),
-  },
-  handler: async (ctx, { clerkId, owner, repo, prNumber }) => {
-    const token = await getToken(ctx, clerkId);
-    return await githubFetch(`/repos/${owner}/${repo}/pulls/${prNumber}/files`, token);
-  },
-});
-
-export const getFileContent = action({
-  args: {
-    clerkId: v.string(),
+    installationId: v.number(),
     owner: v.string(),
     repo: v.string(),
     path: v.string(),
-    ref: v.optional(v.string()),
+    ref: v.string(),
   },
-  handler: async (ctx, { clerkId, owner, repo, path, ref }) => {
-    const token = await getToken(ctx, clerkId);
-    const endpoint = ref
-      ? `/repos/${owner}/${repo}/contents/${path}?ref=${ref}`
-      : `/repos/${owner}/${repo}/contents/${path}`;
-    const data = await githubFetch(endpoint, token);
-    if (data.content) {
-      data.decodedContent = Buffer.from(data.content, "base64").toString("utf-8");
+  handler: async (_, { installationId, owner, repo, path, ref }) => {
+    const octokit = createOctokitForInstallation(installationId);
+
+    const { data } = await octokit.repos.getContent({
+      owner,
+      repo,
+      path,
+      ref,
+    });
+
+    if (Array.isArray(data) || data.type !== "file") {
+      throw new Error(`Path ${path} is not a file`);
     }
-    return data;
+
+    const content = Buffer.from(data.content, "base64").toString("utf-8");
+    return { content, sha: data.sha };
   },
 });
 
-export const getRepoTree = action({
+// Get pull request details (internal)
+export const getPullRequest = internalAction({
   args: {
-    clerkId: v.string(),
+    installationId: v.number(),
     owner: v.string(),
     repo: v.string(),
-    branch: v.optional(v.string()),
+    prNumber: v.number(),
   },
-  handler: async (ctx, { clerkId, owner, repo, branch }) => {
-    const token = await getToken(ctx, clerkId);
-    return await githubFetch(
-      `/repos/${owner}/${repo}/git/trees/${branch || "main"}?recursive=1`,
-      token
-    );
+  handler: async (_, { installationId, owner, repo, prNumber }) => {
+    const octokit = createOctokitForInstallation(installationId);
+
+    const { data } = await octokit.pulls.get({
+      owner,
+      repo,
+      pull_number: prNumber,
+    });
+
+    return {
+      number: data.number,
+      title: data.title,
+      body: data.body,
+      state: data.state,
+      user: { login: data.user?.login || "unknown" },
+      head: { ref: data.head.ref, sha: data.head.sha },
+      base: { ref: data.base.ref, sha: data.base.sha },
+      html_url: data.html_url,
+      additions: data.additions,
+      deletions: data.deletions,
+      changed_files: data.changed_files,
+    };
   },
 });
 
-export const postReviewComment = action({
+// Get pull request files - WITH PAGINATION
+export const getPullRequestFiles = internalAction({
   args: {
-    clerkId: v.string(),
+    installationId: v.number(),
+    owner: v.string(),
+    repo: v.string(),
+    prNumber: v.number(),
+  },
+  handler: async (_, { installationId, owner, repo, prNumber }) => {
+    const octokit = createOctokitForInstallation(installationId);
+
+    // Use pagination to get ALL files
+    const files = await octokit.paginate(octokit.pulls.listFiles, {
+      owner,
+      repo,
+      pull_number: prNumber,
+      per_page: 100,
+    });
+
+    return files.map((file) => ({
+      filename: file.filename,
+      status: file.status,
+      additions: file.additions,
+      deletions: file.deletions,
+      patch: file.patch,
+    }));
+  },
+});
+
+// Post review comment on PR (internal)
+export const postReviewComment = internalAction({
+  args: {
+    installationId: v.number(),
+    owner: v.string(),
+    repo: v.string(),
+    prNumber: v.number(),
+    body: v.string(),
+    event: v.union(
+      v.literal("APPROVE"),
+      v.literal("REQUEST_CHANGES"),
+      v.literal("COMMENT")
+    ),
+  },
+  handler: async (_, { installationId, owner, repo, prNumber, body, event }) => {
+    const octokit = createOctokitForInstallation(installationId);
+
+    const { data } = await octokit.pulls.createReview({
+      owner,
+      repo,
+      pull_number: prNumber,
+      body,
+      event,
+    });
+
+    return { id: data.id, html_url: data.html_url };
+  },
+});
+
+// Post line comment on PR (internal)
+export const postLineComment = internalAction({
+  args: {
+    installationId: v.number(),
     owner: v.string(),
     repo: v.string(),
     prNumber: v.number(),
     body: v.string(),
     path: v.string(),
     line: v.number(),
+    commitSha: v.string(),
   },
-  handler: async (ctx, { clerkId, owner, repo, prNumber, body, path, line }) => {
-    const token = await getToken(ctx, clerkId);
-    const pr = await githubFetch(`/repos/${owner}/${repo}/pulls/${prNumber}`, token);
-    return await githubFetch(`/repos/${owner}/${repo}/pulls/${prNumber}/comments`, token, {
-      method: "POST",
-      body: JSON.stringify({
-        body,
-        commit_id: pr.head.sha,
-        path,
-        line,
-        side: "RIGHT",
-      }),
+  handler: async (_, { installationId, owner, repo, prNumber, body, path, line, commitSha }) => {
+    const octokit = createOctokitForInstallation(installationId);
+
+    const { data } = await octokit.pulls.createReviewComment({
+      owner,
+      repo,
+      pull_number: prNumber,
+      body,
+      commit_id: commitSha,
+      path,
+      line,
+      side: "RIGHT",
     });
+
+    return { id: data.id };
   },
 });
 
-export const createReview = action({
-  args: {
-    clerkId: v.string(),
-    owner: v.string(),
-    repo: v.string(),
-    prNumber: v.number(),
-    event: v.union(v.literal("APPROVE"), v.literal("REQUEST_CHANGES"), v.literal("COMMENT")),
-    body: v.optional(v.string()),
-  },
-  handler: async (ctx, { clerkId, owner, repo, prNumber, event, body }) => {
-    const token = await getToken(ctx, clerkId);
-    return await githubFetch(`/repos/${owner}/${repo}/pulls/${prNumber}/reviews`, token, {
-      method: "POST",
-      body: JSON.stringify({ event, body }),
+// List installation repositories - WITH PAGINATION
+export const listInstallationRepos = action({
+  args: { installationId: v.number() },
+  handler: async (_, { installationId }) => {
+    const octokit = createOctokitForInstallation(installationId);
+
+    // Use pagination to get ALL repos
+    const repos = await octokit.paginate(octokit.apps.listReposAccessibleToInstallation, {
+      per_page: 100,
     });
+
+    return repos.map((repo) => ({
+      id: repo.id,
+      name: repo.name,
+      full_name: repo.full_name,
+      owner: { login: repo.owner?.login || "" },
+      private: repo.private,
+      default_branch: repo.default_branch,
+      description: repo.description,
+    }));
   },
 });
 
-export const mergePullRequest = action({
-  args: {
-    clerkId: v.string(),
-    owner: v.string(),
-    repo: v.string(),
-    prNumber: v.number(),
-    mergeMethod: v.optional(v.union(v.literal("merge"), v.literal("squash"), v.literal("rebase"))),
-  },
-  handler: async (ctx, { clerkId, owner, repo, prNumber, mergeMethod }) => {
-    const token = await getToken(ctx, clerkId);
-    return await githubFetch(`/repos/${owner}/${repo}/pulls/${prNumber}/merge`, token, {
-      method: "PUT",
-      body: JSON.stringify({ merge_method: mergeMethod || "squash" }),
-    });
-  },
-});
+// ============================================================
+// PUBLIC ACTIONS (for frontend via Clerk authentication)
+// ============================================================
 
-export const searchCode = action({
-  args: {
-    clerkId: v.string(),
-    query: v.string(),
-    owner: v.string(),
-    repo: v.string(),
-  },
-  handler: async (ctx, { clerkId, query, owner, repo }) => {
-    const token = await getToken(ctx, clerkId);
-    const q = encodeURIComponent(`${query} repo:${owner}/${repo}`);
-    return await githubFetch(`/search/code?q=${q}`, token);
-  },
-});
-
-export const listBranches = action({
-  args: {
-    clerkId: v.string(),
-    owner: v.string(),
-    repo: v.string(),
-  },
-  handler: async (ctx, { clerkId, owner, repo }) => {
-    const token = await getToken(ctx, clerkId);
-    return await githubFetch(`/repos/${owner}/${repo}/branches`, token);
-  },
-});
-
+// List pull requests - WITH PAGINATION
 export const listPullRequests = action({
   args: {
     clerkId: v.string(),
@@ -219,135 +274,329 @@ export const listPullRequests = action({
     repo: v.string(),
     state: v.optional(v.union(v.literal("open"), v.literal("closed"), v.literal("all"))),
   },
-  handler: async (ctx, { clerkId, owner, repo, state }) => {
-    const token = await getToken(ctx, clerkId);
-    return await githubFetch(`/repos/${owner}/${repo}/pulls?state=${state || "open"}`, token);
+  handler: async (ctx, { clerkId, owner, repo, state = "open" }) => {
+    const installationId = await getUserInstallation(ctx, clerkId);
+    const octokit = createOctokitForInstallation(installationId);
+
+    // Use pagination - get up to 200 PRs max for reasonable performance
+    const prs = await octokit.paginate(
+      octokit.pulls.list,
+      {
+        owner,
+        repo,
+        state,
+        per_page: 100,
+      },
+      (response, done) => {
+        // Stop after 200 PRs to prevent timeout
+        if (response.data.length >= 200) {
+          done();
+        }
+        return response.data;
+      }
+    );
+
+    return prs.slice(0, 200).map((pr) => ({
+      number: pr.number,
+      title: pr.title,
+      state: pr.state,
+      user: { login: pr.user?.login || "unknown" },
+      html_url: pr.html_url,
+      created_at: pr.created_at,
+      updated_at: pr.updated_at,
+      merged_at: pr.merged_at,
+      additions: undefined, // Not available in list endpoint
+      deletions: undefined,
+      changed_files: undefined,
+    }));
   },
 });
 
-export const connectGitHub = action({
+// List branches - WITH PAGINATION
+export const listBranches = action({
   args: {
     clerkId: v.string(),
-    accessToken: v.string(),
+    owner: v.string(),
+    repo: v.string(),
   },
-  handler: async (ctx, { clerkId, accessToken }): Promise<{ success: boolean; username: string }> => {
-    const response = await fetch("https://api.github.com/user", {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/vnd.github.v3+json",
-        "User-Agent": "RepoChat",
-      },
+  handler: async (ctx, { clerkId, owner, repo }) => {
+    const installationId = await getUserInstallation(ctx, clerkId);
+    const octokit = createOctokitForInstallation(installationId);
+
+    const branches = await octokit.paginate(octokit.repos.listBranches, {
+      owner,
+      repo,
+      per_page: 100,
     });
 
-    if (!response.ok) {
-      throw new Error("Invalid GitHub token");
-    }
-
-    const githubUser = await response.json();
-
-    await ctx.runMutation(internal.users.storeGitHubConnection, {
-      clerkId,
-      githubId: githubUser.id,
-      githubUsername: githubUser.login,
-      githubAvatarUrl: githubUser.avatar_url,
-      accessToken,
-      tokenType: "bearer",
-      scope: "repo,read:user",
-    });
-
-    return { success: true, username: githubUser.login };
+    return branches.map((branch) => ({
+      name: branch.name,
+      commit: { sha: branch.commit.sha },
+      protected: branch.protected,
+    }));
   },
 });
 
-export const exchangeOAuthCode = internalAction({
-  args: {
-    code: v.string(),
-    clientId: v.string(),
-    clientSecret: v.string(),
-  },
-  handler: async (_, { code, clientId, clientSecret }) => {
-    const response = await fetch("https://github.com/login/oauth/access_token", {
-      method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, code }),
-    });
-    const data = await response.json();
-    if (data.error) throw new Error(`OAuth error: ${data.error_description || data.error}`);
-    return { accessToken: data.access_token, tokenType: data.token_type, scope: data.scope };
-  },
-});
-
-export const handleOAuthCallback = action({
+// Get pull request (public action)
+export const getPullRequestPublic = action({
   args: {
     clerkId: v.string(),
-    code: v.string(),
+    owner: v.string(),
+    repo: v.string(),
+    prNumber: v.number(),
   },
-  handler: async (ctx, { clerkId, code }): Promise<{ success: boolean; username: string }> => {
-    const clientId = process.env.GITHUB_CLIENT_ID;
-    const clientSecret = process.env.GITHUB_CLIENT_SECRET;
+  handler: async (ctx, { clerkId, owner, repo, prNumber }) => {
+    const installationId = await getUserInstallation(ctx, clerkId);
+    const octokit = createOctokitForInstallation(installationId);
 
-    if (!clientId || !clientSecret) {
-      throw new Error("GitHub OAuth not configured");
-    }
-
-    const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        client_id: clientId,
-        client_secret: clientSecret,
-        code,
-      }),
+    const { data } = await octokit.pulls.get({
+      owner,
+      repo,
+      pull_number: prNumber,
     });
 
-    const tokenData = await tokenResponse.json();
-
-    if (tokenData.error) {
-      throw new Error(tokenData.error_description || tokenData.error);
-    }
-
-    const userResponse = await fetch("https://api.github.com/user", {
-      headers: {
-        Authorization: `Bearer ${tokenData.access_token}`,
-        Accept: "application/vnd.github.v3+json",
-        "User-Agent": "RepoChat",
-      },
-    });
-
-    if (!userResponse.ok) {
-      throw new Error("Failed to get GitHub user");
-    }
-
-    const githubUser = await userResponse.json();
-
-    await ctx.runMutation(internal.users.storeGitHubConnection, {
-      clerkId,
-      githubId: githubUser.id,
-      githubUsername: githubUser.login,
-      githubAvatarUrl: githubUser.avatar_url,
-      accessToken: tokenData.access_token,
-      tokenType: tokenData.token_type || "bearer",
-      scope: tokenData.scope || "repo,read:user",
-    });
-
-    return { success: true, username: githubUser.login };
+    return {
+      number: data.number,
+      title: data.title,
+      body: data.body,
+      state: data.state,
+      user: { login: data.user?.login || "unknown", avatar_url: data.user?.avatar_url },
+      head: { ref: data.head.ref, sha: data.head.sha },
+      base: { ref: data.base.ref, sha: data.base.sha },
+      html_url: data.html_url,
+      created_at: data.created_at,
+      additions: data.additions,
+      deletions: data.deletions,
+      changed_files: data.changed_files,
+    };
   },
 });
 
-export const getGitHubUserFromToken = internalAction({
-  args: { accessToken: v.string() },
-  handler: async (_, { accessToken }) => {
-    const response = await fetch("https://api.github.com/user", {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/vnd.github.v3+json",
-        "User-Agent": "RepoChat",
-      },
+// Get pull request files (public) - WITH PAGINATION
+export const getPullRequestFilesPublic = action({
+  args: {
+    clerkId: v.string(),
+    owner: v.string(),
+    repo: v.string(),
+    prNumber: v.number(),
+  },
+  handler: async (ctx, { clerkId, owner, repo, prNumber }) => {
+    const installationId = await getUserInstallation(ctx, clerkId);
+    const octokit = createOctokitForInstallation(installationId);
+
+    const files = await octokit.paginate(octokit.pulls.listFiles, {
+      owner,
+      repo,
+      pull_number: prNumber,
+      per_page: 100,
     });
-    if (!response.ok) throw new Error("Failed to get GitHub user");
-    return await response.json();
+
+    return files.map((file) => ({
+      filename: file.filename,
+      status: file.status,
+      additions: file.additions,
+      deletions: file.deletions,
+      patch: file.patch,
+    }));
+  },
+});
+
+// Get file content (public action)
+export const getFileContentPublic = action({
+  args: {
+    clerkId: v.string(),
+    owner: v.string(),
+    repo: v.string(),
+    path: v.string(),
+    ref: v.optional(v.string()),
+  },
+  handler: async (ctx, { clerkId, owner, repo, path, ref = "main" }) => {
+    const installationId = await getUserInstallation(ctx, clerkId);
+    const octokit = createOctokitForInstallation(installationId);
+
+    const { data } = await octokit.repos.getContent({
+      owner,
+      repo,
+      path,
+      ref,
+    });
+
+    if (Array.isArray(data) || data.type !== "file") {
+      throw new Error(`Path ${path} is not a file`);
+    }
+
+    const content = Buffer.from(data.content, "base64").toString("utf-8");
+    return { content, sha: data.sha };
+  },
+});
+
+// Post review comment (public action)
+export const postReviewCommentPublic = action({
+  args: {
+    clerkId: v.string(),
+    owner: v.string(),
+    repo: v.string(),
+    prNumber: v.number(),
+    body: v.string(),
+    path: v.optional(v.string()),
+    line: v.optional(v.number()),
+  },
+  handler: async (ctx, { clerkId, owner, repo, prNumber, body, path, line }) => {
+    const installationId = await getUserInstallation(ctx, clerkId);
+    const octokit = createOctokitForInstallation(installationId);
+
+    if (path && line) {
+      // Get PR to get commit SHA
+      const { data: pr } = await octokit.pulls.get({
+        owner,
+        repo,
+        pull_number: prNumber,
+      });
+
+      const { data: comment } = await octokit.pulls.createReviewComment({
+        owner,
+        repo,
+        pull_number: prNumber,
+        body,
+        commit_id: pr.head.sha,
+        path,
+        line,
+        side: "RIGHT",
+      });
+
+      return { id: comment.id, html_url: comment.html_url, created_at: comment.created_at };
+    } else {
+      // Issue comment (not on specific line)
+      const { data: comment } = await octokit.issues.createComment({
+        owner,
+        repo,
+        issue_number: prNumber,
+        body,
+      });
+
+      return { id: comment.id, html_url: comment.html_url, created_at: comment.created_at };
+    }
+  },
+});
+
+// Create review (submit as review with approval/changes)
+export const createReview = action({
+  args: {
+    clerkId: v.string(),
+    owner: v.string(),
+    repo: v.string(),
+    prNumber: v.number(),
+    body: v.string(),
+    event: v.union(
+      v.literal("APPROVE"),
+      v.literal("REQUEST_CHANGES"),
+      v.literal("COMMENT")
+    ),
+  },
+  handler: async (ctx, { clerkId, owner, repo, prNumber, body, event }) => {
+    const installationId = await getUserInstallation(ctx, clerkId);
+    const octokit = createOctokitForInstallation(installationId);
+
+    const { data } = await octokit.pulls.createReview({
+      owner,
+      repo,
+      pull_number: prNumber,
+      body,
+      event,
+    });
+
+    return { id: data.id, html_url: data.html_url };
+  },
+});
+
+// Merge pull request
+export const mergePullRequest = action({
+  args: {
+    clerkId: v.string(),
+    owner: v.string(),
+    repo: v.string(),
+    prNumber: v.number(),
+    commitTitle: v.optional(v.string()),
+    commitMessage: v.optional(v.string()),
+    mergeMethod: v.optional(v.union(v.literal("merge"), v.literal("squash"), v.literal("rebase"))),
+  },
+  handler: async (ctx, { clerkId, owner, repo, prNumber, commitTitle, commitMessage, mergeMethod = "squash" }) => {
+    const installationId = await getUserInstallation(ctx, clerkId);
+    const octokit = createOctokitForInstallation(installationId);
+
+    const { data } = await octokit.pulls.merge({
+      owner,
+      repo,
+      pull_number: prNumber,
+      commit_title: commitTitle,
+      commit_message: commitMessage,
+      merge_method: mergeMethod,
+    });
+
+    return {
+      sha: data.sha,
+      merged: data.merged,
+      message: data.message,
+    };
+  },
+});
+
+// Get repo tree (public action)
+export const getRepoTree = action({
+  args: {
+    clerkId: v.string(),
+    owner: v.string(),
+    repo: v.string(),
+    branch: v.optional(v.string()),
+  },
+  handler: async (ctx, { clerkId, owner, repo, branch = "main" }) => {
+    const installationId = await getUserInstallation(ctx, clerkId);
+    const octokit = createOctokitForInstallation(installationId);
+
+    const { data } = await octokit.git.getTree({
+      owner,
+      repo,
+      tree_sha: branch,
+      recursive: "true",
+    });
+
+    return {
+      tree: data.tree.map((item) => ({
+        path: item.path || "",
+        type: item.type || "",
+        sha: item.sha || "",
+        size: item.size,
+      })),
+      truncated: data.truncated || false,
+    };
+  },
+});
+
+// Search code in repository
+export const searchCode = action({
+  args: {
+    clerkId: v.string(),
+    owner: v.string(),
+    repo: v.string(),
+    query: v.string(),
+  },
+  handler: async (ctx, { clerkId, owner, repo, query }) => {
+    const installationId = await getUserInstallation(ctx, clerkId);
+    const octokit = createOctokitForInstallation(installationId);
+
+    const { data } = await octokit.search.code({
+      q: `${query} repo:${owner}/${repo}`,
+      per_page: 30,
+    });
+
+    return {
+      total_count: data.total_count,
+      items: data.items.map((item) => ({
+        name: item.name,
+        path: item.path,
+        sha: item.sha,
+        html_url: item.html_url,
+      })),
+    };
   },
 });

@@ -5,24 +5,23 @@
 
 import type { Doc, Id } from "../../convex/_generated/dataModel";
 
-// Re-export Convex document types
+// Re-export Convex document types (matching actual schema tables)
 export type User = Doc<"users">;
-export type GithubConnection = Doc<"githubConnections">;
+export type Installation = Doc<"installations">;
 export type Repo = Doc<"repos">;
 export type Review = Doc<"reviews">;
-export type Finding = Doc<"findings">;
-export type Comment = Doc<"comments">;
+export type CodeChunk = Doc<"codeChunks">;
+export type WebhookEvent = Doc<"webhookEvents">;
+export type IndexingJob = Doc<"indexingJobs">;
 export type File = Doc<"files">;
 export type ImportStatus = Doc<"importStatus">;
-export type ProposedChange = Doc<"proposedChanges">;
-export type AuditLog = Doc<"auditLog">;
 
 // Re-export ID types
 export type UserId = Id<"users">;
+export type InstallationId = Id<"installations">;
 export type RepoId = Id<"repos">;
 export type FileId = Id<"files">;
 export type ReviewId = Id<"reviews">;
-export type FindingId = Id<"findings">;
 
 // UI-specific types that map to Convex data
 export interface Repository {
@@ -37,9 +36,9 @@ export interface PullRequest {
   title: string;
   author: string;
   state: "open" | "closed" | "merged";
-  additions: number;
-  deletions: number;
-  changedFiles: number;
+  additions?: number;
+  deletions?: number;
+  changedFiles?: number;
   createdAt: string;
 }
 

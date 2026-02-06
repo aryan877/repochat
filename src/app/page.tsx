@@ -1,23 +1,19 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
 import {
   SignedIn,
-  SignedOut,
-  SignInButton,
   UserButton,
   useUser,
 } from "@clerk/nextjs";
-import { useQuery, useAction } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import Link from "next/link";
-import { ModeTabs, type ViewMode } from "@/components/mode-tabs";
-import { ContentPanel } from "@/components/content-panel";
-import { ChatPanel } from "@/components/chat-panel";
-import { WebContainerProvider } from "@/contexts/webcontainer-context";
-import type { Repository, PullRequest, FileChange, FileTreeNode } from "@/lib/types";
+import { MessageThreadFull } from "@/components/tambo/message-thread-full";
+import type { Suggestion } from "@tambo-ai/react";
+import type { Id } from "../../convex/_generated/dataModel";
+type ViewMode = "chat" | "code";
 
 const GitHubIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -25,97 +21,141 @@ const GitHubIcon = () => (
   </svg>
 );
 
+const MenuIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="4" y1="6" x2="20" y2="6" />
+    <line x1="4" y1="12" x2="20" y2="12" />
+    <line x1="4" y1="18" x2="20" y2="18" />
+  </svg>
+);
+
+const XIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="18" y1="6" x2="6" y2="18" />
+    <line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+);
+
 const PlusIcon = () => (
-  <svg
-    width="14"
-    height="14"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="12" y1="5" x2="12" y2="19" />
     <line x1="5" y1="12" x2="19" y2="12" />
   </svg>
 );
 
-const SearchIcon = () => (
-  <svg
-    width="14"
-    height="14"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <circle cx="11" cy="11" r="8" />
-    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+const MessageIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
   </svg>
 );
 
-const ChevronIcon = () => (
-  <svg
-    width="12"
-    height="12"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <polyline points="6 9 12 15 18 9" />
+const SettingsIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+const ChevronDownIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m6 9 6 6 6-6" />
+  </svg>
+);
+
+const CodeIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="16 18 22 12 16 6" />
+    <polyline points="8 6 2 12 8 18" />
+  </svg>
+);
+
+const ChatIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
   </svg>
 );
 
 const Spinner = () => (
-  <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
-    <svg
-      className="animate-spin w-6 h-6 text-[#525252]"
-      viewBox="0 0 24 24"
-      fill="none"
-    >
-      <circle
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeOpacity="0.2"
-      />
-      <path
-        d="M12 2a10 10 0 0 1 10 10"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-    </svg>
+  <div className="min-h-screen bg-background flex items-center justify-center">
+    <div className="flex flex-col items-center gap-3">
+      <svg className="animate-spin w-5 h-5 text-muted-foreground" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.2" />
+        <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    </div>
   </div>
 );
+
+const INITIAL_SUGGESTIONS: Suggestion[] = [
+  { id: "pr-review", title: "Review a PR", detailedSuggestion: "Review PR #123 on owner/repo", messageId: "review-pr" },
+  { id: "security-check", title: "Security check", detailedSuggestion: "Check this PR for security vulnerabilities", messageId: "security" },
+  { id: "explain-code", title: "Explain code", detailedSuggestion: "Explain how this code works", messageId: "explain" },
+];
+
+function ModeToggle({ mode, onChange }: { mode: ViewMode; onChange: (mode: ViewMode) => void }) {
+  return (
+    <div className="flex items-center bg-secondary rounded-lg p-0.5">
+      <button
+        onClick={() => onChange("chat")}
+        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+          mode === "chat"
+            ? "bg-accent text-foreground"
+            : "text-muted-foreground hover:text-foreground/80"
+        }`}
+      >
+        <ChatIcon />
+        <span className="hidden sm:inline">Chat</span>
+      </button>
+      <button
+        onClick={() => onChange("code")}
+        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+          mode === "code"
+            ? "bg-accent text-foreground"
+            : "text-muted-foreground hover:text-foreground/80"
+        }`}
+      >
+        <CodeIcon />
+        <span className="hidden sm:inline">Code</span>
+      </button>
+    </div>
+  );
+}
+
+function CodeView({ repoId, repoName }: { repoId: Id<"repos"> | null; repoName: string | null }) {
+  return (
+    <div className="flex-1 flex items-center justify-center">
+      <div className="text-center max-w-md mx-auto px-6">
+        <div className="w-14 h-14 rounded-2xl bg-secondary flex items-center justify-center mx-auto mb-5">
+          <CodeIcon />
+        </div>
+        <h3 className="text-base font-medium text-foreground mb-2">
+          {repoId ? repoName : "Code Explorer"}
+        </h3>
+        <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
+          Browse repository files, run the dev server, and preview your app in the browser.
+        </p>
+        <div className="inline-flex items-center gap-2 px-4 py-2.5 bg-secondary/50 rounded-full text-xs text-muted-foreground">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500/80" />
+          Coming soon
+        </div>
+        <p className="mt-4 text-xs text-muted-foreground/60">
+          Node.js projects only
+        </p>
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
   const router = useRouter();
   const { user, isLoaded } = useUser();
+  const [mounted, setMounted] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mode, setMode] = useState<ViewMode>("chat");
+  const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
+  const [selectedRepoId, setSelectedRepoId] = useState<Id<"repos"> | null>(null);
+  const [repoDropdownOpen, setRepoDropdownOpen] = useState(false);
 
-  // Mode state
-  const [mode, setMode] = useState<ViewMode>("pr-review");
-
-  // Repository state - using proper Convex types
-  const [selectedRepo, setSelectedRepo] = useState<Repository | undefined>();
-  const [selectedPR, setSelectedPR] = useState<PullRequest | undefined>();
-  const [pullRequests, setPullRequests] = useState<PullRequest[]>([]);
-  const [isLoadingPRs, setIsLoadingPRs] = useState(false);
-  const [fileChanges, setFileChanges] = useState<FileChange[]>([]);
-
-  // Code view state
-  const [fileTree, setFileTree] = useState<FileTreeNode[]>([]);
-  const [selectedFile, setSelectedFile] = useState<{ path: string; content: string } | undefined>();
-
-  // Convex queries and actions
   const githubStatus = useQuery(
     api.users.getGitHubStatus,
     user?.id ? { clerkId: user.id } : "skip"
@@ -126,418 +166,186 @@ export default function Home() {
     user?.id ? { clerkId: user.id } : "skip"
   );
 
-  const listPullRequests = useAction(api.github.listPullRequests);
-  const getPullRequestFiles = useAction(api.github.getPullRequestFilesPublic);
-  const importRepository = useAction(api.fileActions.importRepository);
-
-  // Import state
-  const [isImporting, setIsImporting] = useState(false);
-
-  // Get import status for selected repo - using proper Id type
-  const importStatus = useQuery(
-    api.files.getImportStatus,
-    selectedRepo?._id ? { repoId: selectedRepo._id } : "skip"
-  );
-
-  // Get files for code view mode
-  const repoFiles = useQuery(
-    api.files.getRepoFiles,
-    selectedRepo?._id && mode === "code-view" ? { repoId: selectedRepo._id } : "skip"
-  );
-
-  // Build file tree from Convex files
   useEffect(() => {
-    if (!repoFiles || repoFiles.length === 0) {
-      setFileTree([]);
-      return;
-    }
+    setMounted(true);
+  }, []);
 
-    // Build tree structure from flat file list
-    const buildTree = (files: typeof repoFiles): FileTreeNode[] => {
-      const root: FileTreeNode[] = [];
-      const pathMap = new Map<string, FileTreeNode>();
-
-      // Sort files to ensure directories come before their contents
-      const sortedFiles = [...files].sort((a, b) => a.path.localeCompare(b.path));
-
-      for (const file of sortedFiles) {
-        const parts = file.path.split("/");
-        let currentPath = "";
-
-        for (let i = 0; i < parts.length; i++) {
-          const part = parts[i];
-          const isLast = i === parts.length - 1;
-          const parentPath = currentPath;
-          currentPath = currentPath ? `${currentPath}/${part}` : part;
-
-          if (!pathMap.has(currentPath)) {
-            const node: FileTreeNode = {
-              name: part,
-              path: currentPath,
-              type: isLast ? file.type : "directory",
-              children: isLast && file.type === "file" ? undefined : [],
-            };
-
-            pathMap.set(currentPath, node);
-
-            if (parentPath) {
-              const parent = pathMap.get(parentPath);
-              if (parent?.children) {
-                parent.children.push(node);
-              }
-            } else {
-              root.push(node);
-            }
-          }
-        }
-      }
-
-      return root;
-    };
-
-    setFileTree(buildTree(repoFiles));
-  }, [repoFiles]);
-
-  // Handle importing a repo when switching to Code View mode
-  const handleImportRepo = useCallback(async () => {
-    if (!selectedRepo?._id || !user?.id || isImporting) return;
-
-    // Check if already imported
-    if (importStatus?.status === "completed") return;
-
-    setIsImporting(true);
-    try {
-      await importRepository({
-        clerkId: user.id,
-        repoId: selectedRepo._id,
-      });
-    } catch (error) {
-      console.error("Failed to import repository:", error);
-    } finally {
-      setIsImporting(false);
-    }
-  }, [selectedRepo?._id, user?.id, isImporting, importStatus?.status, importRepository]);
-
-  // Auto-import when switching to code-view mode with a selected repo
-  useEffect(() => {
-    if (mode === "code-view" && selectedRepo && !importStatus && !isImporting) {
-      handleImportRepo();
-    }
-  }, [mode, selectedRepo, importStatus, isImporting, handleImportRepo]);
-
-  // Convert connected repos to Repository type
-  const repositories: Repository[] =
-    connectedRepos?.map((repo) => ({
-      _id: repo._id,
-      name: repo.name,
-      owner: repo.owner,
-      fullName: repo.fullName,
-    })) || [];
-
-  // Redirect to onboarding if not signed in or GitHub not connected
   useEffect(() => {
     if (isLoaded && !user) {
       router.push("/onboarding");
-    } else if (
-      isLoaded &&
-      user &&
-      githubStatus !== undefined &&
-      !githubStatus?.connected
-    ) {
+    } else if (isLoaded && user && githubStatus !== undefined && !githubStatus?.connected) {
       router.push("/onboarding");
     }
   }, [isLoaded, user, githubStatus, router]);
 
-  // Fetch PRs when repo changes
-  const fetchPullRequests = useCallback(
-    async (repo: Repository) => {
-      if (!user?.id) return;
-
-      setIsLoadingPRs(true);
-      setPullRequests([]);
-      setSelectedPR(undefined);
-      setFileChanges([]);
-
-      try {
-        const prs = await listPullRequests({
-          clerkId: user.id,
-          owner: repo.owner,
-          repo: repo.name,
-          state: "open",
-        });
-
-        const mappedPRs: PullRequest[] = prs.map(
-          (pr) => ({
-            number: pr.number,
-            title: pr.title,
-            author: pr.user?.login || "unknown",
-            state: pr.merged_at ? "merged" : (pr.state as "open" | "closed"),
-            additions: pr.additions ?? undefined,
-            deletions: pr.deletions ?? undefined,
-            changedFiles: pr.changed_files ?? undefined,
-            createdAt: pr.created_at,
-          })
-        );
-
-        setPullRequests(mappedPRs);
-      } catch (error) {
-        console.error("Failed to fetch PRs:", error);
-      } finally {
-        setIsLoadingPRs(false);
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 768) {
+        setSidebarOpen(false);
       }
-    },
-    [user?.id, listPullRequests]
-  );
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
-  // Fetch file changes when PR is selected
-  const fetchFileChanges = useCallback(
-    async (repo: Repository, pr: PullRequest) => {
-      if (!user?.id) return;
-
-      try {
-        const files = await getPullRequestFiles({
-          clerkId: user.id,
-          owner: repo.owner,
-          repo: repo.name,
-          prNumber: pr.number,
-        });
-
-        const mappedFiles: FileChange[] = files.map(
-          (file: {
-            filename: string;
-            additions: number;
-            deletions: number;
-            patch?: string;
-            status: string;
-          }) => ({
-            filePath: file.filename,
-            additions: file.additions,
-            deletions: file.deletions,
-            patch: file.patch || "",
-            status: file.status as "added" | "modified" | "deleted" | "renamed",
-          })
-        );
-
-        setFileChanges(mappedFiles);
-      } catch (error) {
-        console.error("Failed to fetch file changes:", error);
-      }
-    },
-    [user?.id, getPullRequestFiles]
-  );
-
-  // Handle repo selection
-  const handleRepoChange = useCallback(
-    (repo: Repository) => {
-      setSelectedRepo(repo);
-      setSelectedFile(undefined);
-      fetchPullRequests(repo);
-    },
-    [fetchPullRequests]
-  );
-
-  // Handle PR selection
-  const handlePRChange = useCallback(
-    (pr: PullRequest) => {
-      setSelectedPR(pr);
-      if (selectedRepo) {
-        fetchFileChanges(selectedRepo, pr);
-      }
-    },
-    [selectedRepo, fetchFileChanges]
-  );
-
-  // Handle file selection in code view
-  const handleFileSelect = useCallback(
-    (path: string) => {
-      const file = repoFiles?.find(
-        (f: { path: string; type: string; content?: string }) =>
-          f.path === path && f.type === "file"
-      );
-      if (file && file.content) {
-        setSelectedFile({ path: file.path, content: file.content });
-      }
-    },
-    [repoFiles]
-  );
-
-  // Show loading while checking auth status
-  if (
-    !isLoaded ||
-    !user ||
-    githubStatus === undefined ||
-    !githubStatus?.connected
-  ) {
+  if (!mounted || !isLoaded || !user || githubStatus === undefined || !githubStatus?.connected) {
     return <Spinner />;
   }
 
-  // Render main content wrapped with WebContainerProvider when in code-view mode
-  const mainContent = (
-    <div className="flex-1 flex overflow-hidden">
-      <ContentPanel
-        mode={mode}
-        repositories={repositories}
-        selectedRepo={selectedRepo}
-        onRepoChange={handleRepoChange}
-        pullRequests={pullRequests}
-        selectedPR={selectedPR}
-        onPRChange={handlePRChange}
-        isLoadingPRs={isLoadingPRs}
-        fileChanges={fileChanges}
-        fileTree={fileTree}
-        selectedFile={selectedFile}
-        onFileSelect={handleFileSelect}
-        importStatus={importStatus}
-        isImporting={isImporting}
-      />
-      <ChatPanel mode={mode} />
-    </div>
-  );
+  const handleRepoSelect = (repo: { _id: Id<"repos">; name: string } | null) => {
+    if (repo) {
+      setSelectedRepo(repo.name);
+      setSelectedRepoId(repo._id);
+    } else {
+      setSelectedRepo(null);
+      setSelectedRepoId(null);
+    }
+    setRepoDropdownOpen(false);
+  };
 
   return (
-    <div className="flex h-screen bg-[#0a0a0a] text-[#fafafa]">
-      {/* Left Sidebar - Navigation */}
-      <motion.aside
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.3 }}
-        className="w-64 flex flex-col bg-[#0a0a0a] border-r border-[#1f1f1f]"
-      >
-        <div className="p-4 flex items-center justify-between">
+    <div className="flex h-screen bg-background text-foreground">
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-backdrop z-40 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <aside className={`
+        fixed inset-y-0 left-0 z-50 w-64 bg-background border-r border-secondary
+        transform transition-transform duration-200 ease-out
+        md:relative md:translate-x-0
+        ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+      `}>
+        <div className="h-14 px-4 flex items-center justify-between border-b border-secondary">
           <span className="text-sm font-medium">RepoChat</span>
-          <SignedIn>
-            <UserButton
-              appearance={{
-                elements: {
-                  avatarBox: "w-7 h-7",
-                },
-              }}
-            />
-          </SignedIn>
-          <SignedOut>
-            <SignInButton mode="modal">
-              <button className="text-xs text-[#525252] hover:text-[#a3a3a3] transition-colors">
-                Sign in
-              </button>
-            </SignInButton>
-          </SignedOut>
+          <div className="flex items-center gap-2">
+            <SignedIn>
+              <UserButton appearance={{ elements: { avatarBox: "w-6 h-6" } }} />
+            </SignedIn>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="p-1 text-muted-foreground hover:text-foreground md:hidden"
+            >
+              <XIcon />
+            </button>
+          </div>
         </div>
 
-        <div className="px-3 mb-2">
-          <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[#fafafa] bg-[#1f1f1f] hover:bg-[#292929] rounded-lg transition-colors">
+        <div className="p-3">
+          <button className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-medium bg-secondary rounded-lg hover:bg-accent transition-colors">
             <PlusIcon />
             New chat
           </button>
         </div>
 
-        <div className="px-3 mb-4">
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#525252]">
-              <SearchIcon />
-            </span>
-            <input
-              type="text"
-              placeholder="Search"
-              className="w-full bg-[#141414] rounded-lg pl-9 pr-3 py-2 text-sm text-[#fafafa] placeholder-[#525252] focus:outline-none focus:bg-[#1f1f1f] transition-colors"
-            />
+        <div className="flex-1 overflow-y-auto px-3">
+          <div className="px-2 py-2 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">
+            Recent
+          </div>
+          <div className="space-y-0.5">
+            <button className="w-full flex items-center gap-2 px-2 py-2 text-sm text-muted-foreground bg-card rounded-lg hover:bg-secondary transition-colors">
+              <MessageIcon />
+              <span className="truncate">New conversation</span>
+            </button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-3">
-          <div className="mb-6">
-            <button className="w-full flex items-center justify-between px-2 py-1.5 text-xs text-[#525252] hover:text-[#a3a3a3] transition-colors">
-              <span>Recent</span>
-              <ChevronIcon />
-            </button>
-            <div className="mt-1 space-y-0.5">
-              <button className="w-full text-left px-2 py-1.5 text-sm text-[#a3a3a3] hover:text-[#fafafa] hover:bg-[#141414] rounded transition-colors truncate">
-                New conversation
-              </button>
-            </div>
+        <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-secondary bg-background">
+          <Link
+            href="/settings"
+            className="w-full flex items-center gap-2.5 px-2 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-card rounded-lg transition-colors"
+          >
+            <SettingsIcon />
+            <span>Settings</span>
+          </Link>
+          <div className="flex items-center gap-2.5 px-2 py-2 mt-1 text-sm text-muted-foreground/60">
+            <GitHubIcon />
+            <span className="truncate">@{githubStatus?.github?.username}</span>
           </div>
+        </div>
+      </aside>
 
-          <div>
-            <button className="w-full flex items-center justify-between px-2 py-1.5 text-xs text-[#525252] hover:text-[#a3a3a3] transition-colors">
-              <span>Repositories</span>
-              <ChevronIcon />
+      <main className="flex-1 flex flex-col min-w-0">
+        <header className="h-14 px-3 sm:px-4 flex items-center justify-between border-b border-secondary gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="p-2 text-muted-foreground hover:text-foreground md:hidden flex-shrink-0"
+            >
+              <MenuIcon />
             </button>
-            <div className="mt-1 space-y-0.5">
-              {connectedRepos?.map((repo) => (
-                <button
-                  key={repo._id}
-                  onClick={() =>
-                    handleRepoChange({
-                      _id: repo._id,
-                      name: repo.name,
-                      owner: repo.owner,
-                      fullName: repo.fullName,
-                    })
-                  }
-                  className={`w-full text-left px-2 py-1.5 text-sm rounded transition-colors truncate ${
-                    selectedRepo?._id === repo._id
-                      ? "text-[#fafafa] bg-[#1f1f1f]"
-                      : "text-[#a3a3a3] hover:text-[#fafafa] hover:bg-[#141414]"
-                  }`}
-                >
-                  {repo.name}
-                </button>
-              ))}
-              {(!connectedRepos || connectedRepos.length === 0) && (
-                <p className="px-2 py-1.5 text-xs text-[#525252]">
-                  No repositories connected
-                </p>
+
+            <div className="relative min-w-0">
+              <button
+                onClick={() => setRepoDropdownOpen(!repoDropdownOpen)}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground bg-card rounded-lg hover:bg-secondary transition-colors max-w-[200px]"
+              >
+                <GitHubIcon />
+                <span className="truncate">{selectedRepo || "Select repo"}</span>
+                <ChevronDownIcon />
+              </button>
+
+              {repoDropdownOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setRepoDropdownOpen(false)}
+                  />
+                  <div className="absolute top-full left-0 mt-1 w-64 bg-card border border-secondary rounded-lg shadow-2xl z-50 overflow-hidden">
+                    <div className="p-2 border-b border-secondary">
+                      <input
+                        type="text"
+                        placeholder="Search repos..."
+                        className="w-full px-3 py-2 text-sm bg-background border border-secondary rounded-md text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:border-ring"
+                      />
+                    </div>
+                    <div className="max-h-64 overflow-y-auto">
+                      <button
+                        onClick={() => handleRepoSelect(null)}
+                        className="w-full px-3 py-2.5 text-left text-sm text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                      >
+                        All repositories
+                      </button>
+                      {connectedRepos?.map((repo) => (
+                        <button
+                          key={repo._id}
+                          onClick={() => handleRepoSelect({ _id: repo._id, name: repo.name })}
+                          className="w-full px-3 py-2.5 text-left text-sm text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors flex items-center gap-2"
+                        >
+                          <span className="truncate">{repo.name}</span>
+                          {repo.autoReview && (
+                            <span className="ml-auto text-[10px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded">auto</span>
+                          )}
+                        </button>
+                      ))}
+                      {(!connectedRepos || connectedRepos.length === 0) && (
+                        <div className="px-3 py-4 text-center text-sm text-muted-foreground/60">
+                          No repos connected
+                          <Link href="/settings" className="block mt-1 text-muted-foreground hover:text-foreground">
+                            Add repos in settings
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           </div>
-        </div>
 
-        <div className="p-3 border-t border-[#1f1f1f]">
-          <Link
-            href="/onboarding"
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[#a3a3a3] hover:text-[#fafafa] hover:bg-[#141414] rounded-lg transition-colors"
-          >
-            <GitHubIcon />
-            <span className="truncate">@{githubStatus?.github?.username}</span>
-          </Link>
-        </div>
-      </motion.aside>
-
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col bg-[#0a0a0a]">
-        {/* Header with Mode Tabs */}
-        <header className="flex items-center justify-between px-4 py-3 border-b border-[#1f1f1f]">
-          <ModeTabs mode={mode} onModeChange={setMode} />
-
-          <div className="flex items-center gap-3 text-xs text-[#525252]">
-            {selectedRepo && (
-              <span className="px-2 py-1 bg-[#141414] rounded">
-                {selectedRepo.fullName}
-              </span>
-            )}
-            {selectedPR && (
-              <span className="px-2 py-1 bg-[#141414] rounded">
-                PR #{selectedPR.number}
-              </span>
-            )}
-            {mode === "code-view" && importStatus && (
-              <span className="px-2 py-1 bg-[#141414] rounded">
-                {importStatus.status === "importing"
-                  ? `Importing... ${importStatus.progress || 0}%`
-                  : importStatus.status === "completed"
-                  ? "Synced"
-                  : importStatus.status}
-              </span>
-            )}
-          </div>
+          <ModeToggle mode={mode} onChange={setMode} />
         </header>
 
-        {/* Split View: Content Panel + Chat Panel */}
-        {mode === "code-view" && selectedRepo?._id ? (
-          <WebContainerProvider repoId={selectedRepo._id} enabled={importStatus?.status === "completed"}>
-            {mainContent}
-          </WebContainerProvider>
+        {mode === "chat" ? (
+          <MessageThreadFull
+            initialSuggestions={INITIAL_SUGGESTIONS}
+            placeholder={selectedRepo ? `Ask about ${selectedRepo}...` : "Ask about a PR, review code, or paste a GitHub link..."}
+            className="flex-1"
+          />
         ) : (
-          mainContent
+          <CodeView repoId={selectedRepoId} repoName={selectedRepo} />
         )}
       </main>
     </div>

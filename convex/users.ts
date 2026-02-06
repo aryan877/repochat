@@ -96,8 +96,9 @@ export const getConnectedRepos = query({
       fullName: repo.fullName,
       defaultBranch: repo.defaultBranch,
       isPrivate: repo.isPrivate,
-      autoReview: repo.autoReview,
+      autoReview: repo.autoReview ?? false,
       lastIndexedAt: repo.lastIndexedAt,
+      indexedBranches: repo.indexedBranches ?? [],
     }));
   },
 });
@@ -174,5 +175,30 @@ export const getUserInstallationId = query({
 
     const installation = await ctx.db.get(user.githubInstallationId);
     return installation?.installationId ?? null;
+  },
+});
+
+// Update repo settings (auto-review, etc.)
+export const updateRepoSettings = mutation({
+  args: {
+    repoId: v.id("repos"),
+    autoReview: v.optional(v.boolean()),
+    reviewDrafts: v.optional(v.boolean()),
+    securityOnly: v.optional(v.boolean()),
+    autoApprove: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { repoId, autoReview, reviewDrafts, securityOnly, autoApprove }) => {
+    const repo = await ctx.db.get(repoId);
+    if (!repo) {
+      throw new Error("Repository not found");
+    }
+
+    const updates: Record<string, boolean | undefined> = {};
+    if (autoReview !== undefined) updates.autoReview = autoReview;
+    if (reviewDrafts !== undefined) updates.reviewDrafts = reviewDrafts;
+    if (securityOnly !== undefined) updates.securityOnly = securityOnly;
+    if (autoApprove !== undefined) updates.autoApprove = autoApprove;
+
+    await ctx.db.patch(repoId, updates);
   },
 });

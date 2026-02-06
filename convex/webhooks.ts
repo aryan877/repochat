@@ -1,25 +1,49 @@
 "use node";
 
+/**
+ * GitHub Webhook Handlers
+ *
+ * Payloads are typed using @octokit/webhooks-types.
+ * Signature verification happens in http.ts before these handlers are called.
+ */
+
 import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type {
+  InstallationCreatedEvent,
+  InstallationDeletedEvent,
+  InstallationSuspendEvent,
+  InstallationUnsuspendEvent,
+  InstallationRepositoriesAddedEvent,
+  InstallationRepositoriesRemovedEvent,
+  PushEvent,
+  PullRequestOpenedEvent,
+  PullRequestSynchronizeEvent,
+} from "@octokit/webhooks-types";
 
-// Handle GitHub App installation
+type InstallationEvent =
+  | InstallationCreatedEvent
+  | InstallationDeletedEvent
+  | InstallationSuspendEvent
+  | InstallationUnsuspendEvent;
+
 export const handleInstallation = internalAction({
   args: {
     action: v.string(),
     payload: v.any(),
   },
   handler: async (ctx, { action, payload }) => {
-    const installation = payload.installation;
+    const event = payload as InstallationEvent;
+    const installation = event.installation;
 
     if (action === "created") {
-      // New installation - store it
+      const createdEvent = payload as InstallationCreatedEvent;
       await ctx.runMutation(internal.repos.createInstallation, {
         installationId: installation.id,
         accountId: installation.account.id,
         accountLogin: installation.account.login,
-        accountType: installation.account.type,
+        accountType: installation.account.type as "User" | "Organization",
         accountAvatarUrl: installation.account.avatar_url,
         permissions: {
           contents: installation.permissions?.contents,
@@ -31,8 +55,8 @@ export const handleInstallation = internalAction({
       });
 
       // Add initial repositories if any
-      if (payload.repositories && payload.repositories.length > 0) {
-        for (const repo of payload.repositories) {
+      if (createdEvent.repositories && createdEvent.repositories.length > 0) {
+        for (const repo of createdEvent.repositories) {
           await ctx.runMutation(internal.repos.addRepo, {
             installationId: installation.id,
             githubRepoId: repo.id,
@@ -58,17 +82,17 @@ export const handleInstallation = internalAction({
   },
 });
 
-// Handle repository added/removed from installation
 export const handleInstallationRepos = internalAction({
   args: {
     action: v.string(),
     payload: v.any(),
   },
   handler: async (ctx, { action, payload }) => {
-    const installationId = payload.installation.id;
+    if (action === "added") {
+      const event = payload as InstallationRepositoriesAddedEvent;
+      const installationId = event.installation.id;
 
-    if (action === "added" && payload.repositories_added) {
-      for (const repo of payload.repositories_added) {
+      for (const repo of event.repositories_added) {
         await ctx.runMutation(internal.repos.addRepo, {
           installationId,
           githubRepoId: repo.id,
@@ -76,8 +100,11 @@ export const handleInstallationRepos = internalAction({
           isPrivate: repo.private,
         });
       }
-    } else if (action === "removed" && payload.repositories_removed) {
-      for (const repo of payload.repositories_removed) {
+    } else if (action === "removed") {
+      const event = payload as InstallationRepositoriesRemovedEvent;
+      const installationId = event.installation.id;
+
+      for (const repo of event.repositories_removed) {
         await ctx.runMutation(internal.repos.removeRepo, {
           installationId,
           githubRepoId: repo.id,
@@ -87,17 +114,18 @@ export const handleInstallationRepos = internalAction({
   },
 });
 
-// Handle push event (trigger re-indexing)
 export const handlePush = internalAction({
   args: { payload: v.any() },
   handler: async (ctx, { payload }) => {
-    const installationId = payload.installation?.id;
-    const repoFullName = payload.repository?.full_name;
-    const branch = payload.ref?.replace("refs/heads/", "");
-    const commitSha = payload.after;
+    const event = payload as PushEvent;
 
-    if (!installationId || !repoFullName || !branch) {
-      console.log("Missing required push data");
+    const installationId = event.installation?.id;
+    const repoFullName = event.repository.full_name;
+    const branch = event.ref.replace("refs/heads/", "");
+    const commitSha = event.after;
+
+    if (!installationId) {
+      console.log("Missing installation ID in push event");
       return;
     }
 
@@ -127,19 +155,22 @@ export const handlePush = internalAction({
   },
 });
 
-// Handle pull request event (trigger review)
+type PullRequestEvent = PullRequestOpenedEvent | PullRequestSynchronizeEvent;
+
 export const handlePullRequest = internalAction({
   args: {
     action: v.string(),
     payload: v.any(),
   },
-  handler: async (ctx, { action, payload }) => {
-    const installationId = payload.installation?.id;
-    const repoFullName = payload.repository?.full_name;
-    const pr = payload.pull_request;
+  handler: async (ctx, { action: _action, payload }) => {
+    const event = payload as PullRequestEvent;
 
-    if (!installationId || !repoFullName || !pr) {
-      console.log("Missing required PR data");
+    const installationId = event.installation?.id;
+    const repoFullName = event.repository.full_name;
+    const pr = event.pull_request;
+
+    if (!installationId) {
+      console.log("Missing installation ID in PR event");
       return;
     }
 
@@ -171,7 +202,7 @@ export const handlePullRequest = internalAction({
       installationId,
       prNumber: pr.number,
       prTitle: pr.title,
-      prAuthor: pr.user.login,
+      prAuthor: pr.user?.login ?? "unknown",
       prUrl: pr.html_url,
       baseBranch: pr.base.ref,
       headBranch: pr.head.ref,

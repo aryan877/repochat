@@ -5,15 +5,10 @@ import {
   MessageInput,
   MessageInputError,
   MessageInputFileButton,
-  MessageInputMcpConfigButton,
   MessageInputSubmitButton,
   MessageInputTextarea,
   MessageInputToolbar,
 } from "@/components/tambo/message-input";
-import {
-  MessageSuggestions,
-  MessageSuggestionsList,
-} from "@/components/tambo/message-suggestions";
 import { ScrollableMessageContainer } from "@/components/tambo/scrollable-message-container";
 import { ThreadContainer } from "./thread-container";
 import {
@@ -21,97 +16,168 @@ import {
   ThreadContentMessages,
 } from "@/components/tambo/thread-content";
 import type { Suggestion } from "@tambo-ai/react";
+import {
+  useTamboSuggestions,
+  useTamboThread,
+  useTamboGenerationStage,
+  GenerationStage,
+} from "@tambo-ai/react";
 import type { VariantProps } from "class-variance-authority";
 import * as React from "react";
+import { useEffect, useRef } from "react";
+import { cn } from "@/lib/utils";
 
-/**
- * Props for the MessageThreadFull component
- */
+function GenerationStageIndicator() {
+  const { generationStage } = useTamboGenerationStage();
+
+  if (!generationStage || generationStage === GenerationStage.COMPLETE || generationStage === GenerationStage.IDLE) {
+    return null;
+  }
+
+  const stageMessages: Record<string, string> = {
+    [GenerationStage.CHOOSING_COMPONENT]: "Thinking",
+    [GenerationStage.FETCHING_CONTEXT]: "Analyzing",
+    [GenerationStage.HYDRATING_COMPONENT]: "Generating",
+    [GenerationStage.STREAMING_RESPONSE]: "Writing",
+    [GenerationStage.ERROR]: "Error",
+  };
+
+  return (
+    <div className="flex items-center justify-center gap-2 py-3">
+      <div className="flex items-center gap-1">
+        <span className="w-1 h-1 rounded-full bg-muted-foreground animate-pulse" />
+        <span className="w-1 h-1 rounded-full bg-muted-foreground animate-pulse [animation-delay:150ms]" />
+        <span className="w-1 h-1 rounded-full bg-muted-foreground animate-pulse [animation-delay:300ms]" />
+      </div>
+      <span className="text-[13px] text-muted-foreground">{stageMessages[generationStage] || "Processing"}</span>
+    </div>
+  );
+}
+
+function SuggestionsBar({ initialSuggestions }: { initialSuggestions: Suggestion[] }) {
+  const { thread } = useTamboThread();
+  const {
+    suggestions: generatedSuggestions,
+    accept,
+    generateResult: { isPending: isGenerating }
+  } = useTamboSuggestions({ maxSuggestions: 4 });
+
+  const suggestions = React.useMemo(() => {
+    if (!thread?.messages?.length || thread.messages.length <= 2) {
+      return initialSuggestions;
+    }
+    return generatedSuggestions.length > 0 ? generatedSuggestions : initialSuggestions;
+  }, [thread?.messages?.length, generatedSuggestions, initialSuggestions]);
+
+  if (suggestions.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap justify-center gap-2 pt-4">
+      {suggestions.map((suggestion) => (
+        <button
+          key={suggestion.id}
+          onClick={() => accept({ suggestion })}
+          disabled={isGenerating}
+          className={cn(
+            "px-4 py-2 text-[13px] rounded-2xl transition-colors duration-150",
+            "bg-secondary text-muted-foreground",
+            "hover:bg-accent hover:text-foreground",
+            "disabled:opacity-40 disabled:cursor-not-allowed"
+          )}
+        >
+          {suggestion.title}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export interface MessageThreadFullProps extends React.HTMLAttributes<HTMLDivElement> {
-  /**
-   * Controls the visual styling of messages in the thread.
-   * Possible values include: "default", "compact", etc.
-   * These values are defined in messageVariants from "@/components/tambo/message".
-   * @example variant="compact"
-   */
   variant?: VariantProps<typeof messageVariants>["variant"];
 }
 
-/**
- * Props for the MessageThreadFull component
- */
 export interface MessageThreadFullExtendedProps extends MessageThreadFullProps {
-  /**
-   * Suggestions to display when thread is empty.
-   * If not provided, uses default PR review suggestions.
-   */
   initialSuggestions?: Suggestion[];
-  /**
-   * Placeholder text for the input textarea.
-   */
   placeholder?: string;
 }
 
-/**
- * A full-screen chat thread component with input and suggestions.
- * Simplified version without sidebar - sidebar is handled by parent layout.
- */
 export const MessageThreadFull = React.forwardRef<
   HTMLDivElement,
   MessageThreadFullExtendedProps
 >(({ className, variant, initialSuggestions, placeholder, ...props }, ref) => {
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { thread } = useTamboThread();
+
   const defaultSuggestions: Suggestion[] = [
     {
-      id: "suggestion-1",
+      id: "review-pr",
       title: "Review a PR",
       detailedSuggestion: "Review PR #123 on owner/repo",
       messageId: "review-pr",
     },
     {
-      id: "suggestion-2",
-      title: "Find code",
-      detailedSuggestion: "Search for authentication logic in the codebase",
-      messageId: "find-code",
+      id: "security",
+      title: "Security check",
+      detailedSuggestion: "Check this PR for security vulnerabilities",
+      messageId: "security",
     },
     {
-      id: "suggestion-3",
+      id: "explain",
       title: "Explain code",
-      detailedSuggestion: "Explain how the API routes work",
-      messageId: "explain-code",
+      detailedSuggestion: "Explain how this code works",
+      messageId: "explain",
+    },
+    {
+      id: "analyze",
+      title: "Analyze changes",
+      detailedSuggestion: "Analyze the changes in this PR",
+      messageId: "analyze",
     },
   ];
 
   const suggestions = initialSuggestions || defaultSuggestions;
 
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [thread?.messages?.length]);
+
   return (
     <ThreadContainer
       ref={ref}
       disableSidebarSpacing
-      className={className}
+      className={cn("flex flex-col h-full bg-background", className)}
       {...props}
     >
-      <ScrollableMessageContainer className="p-4">
-        <ThreadContent variant={variant}>
-          <ThreadContentMessages />
-        </ThreadContent>
+      <ScrollableMessageContainer className="flex-1 px-4 py-6">
+        <div className="max-w-3xl mx-auto">
+          <ThreadContent variant={variant}>
+            <ThreadContentMessages />
+          </ThreadContent>
+          <div ref={messagesEndRef} />
+        </div>
       </ScrollableMessageContainer>
 
-      {/* Message input */}
-      <div className="px-4 pb-4">
-        <MessageInput>
-          <MessageInputTextarea placeholder={placeholder || "Ask about a PR or paste a link..."} />
-          <MessageInputToolbar>
-            <MessageInputFileButton className="rounded-full" />
-            <MessageInputMcpConfigButton className="rounded-full" />
-            <MessageInputSubmitButton className="rounded-full" />
-          </MessageInputToolbar>
-          <MessageInputError />
-        </MessageInput>
+      <GenerationStageIndicator />
 
-        {/* Suggestions */}
-        <MessageSuggestions initialSuggestions={suggestions}>
-          <MessageSuggestionsList className="mt-3" />
-        </MessageSuggestions>
+      <div className="bg-background pb-6 px-4">
+        <div className="max-w-3xl mx-auto">
+          <MessageInput variant="solid">
+            <MessageInputTextarea
+              placeholder={placeholder || "Ask about a PR, review code, or paste a GitHub link..."}
+            />
+            <MessageInputToolbar>
+              <MessageInputFileButton />
+              <MessageInputSubmitButton />
+            </MessageInputToolbar>
+            <MessageInputError />
+          </MessageInput>
+
+          <SuggestionsBar initialSuggestions={suggestions} />
+
+          <p className="mt-4 text-center text-[11px] text-muted-foreground/60">
+            RepoChat can review PRs, analyze code, and take GitHub actions
+          </p>
+        </div>
       </div>
     </ThreadContainer>
   );

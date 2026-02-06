@@ -1,76 +1,34 @@
-# CLAUDE.md
+# AGENT.md
 
-## Project Overview
+## What is this?
+RepoChat - AI code review app with GitHub integration, WebContainers for live preview, and Tambo for generative UI.
 
-**RepoChat** - AI-powered GitHub code review and editing app with Generative UI. Two modes: PR Review and Code View with WebContainers for instant file operations.
-
-## Tech Stack
-
-- Next.js 15 + Convex + Clerk + Tambo AI
-- WebContainers for in-browser file system
+## Stack
+Next.js 15, Convex, Clerk, Tambo AI, WebContainers, Octokit
 
 ## Commands
-
 ```bash
-npm run dev          # Starts Next.js + Convex
-npx convex dev       # Regenerate types
+npm run dev      # Next.js + Convex
+npx tsc --noEmit # Type check
 ```
 
-## Structure
+## Key Patterns
 
+**Types:** All in `src/types/`. Use Octokit types for GitHub, Convex Doc types for DB. Don't create UI-specific types - just Pick<> what you need inline.
+
+**Convex:** Returns full Octokit responses, no transformation. Types stay in sync automatically.
+
+**Data Flow:**
 ```
-src/
-├── app/page.tsx           # Main split view (PR Review / Code View modes)
-├── components/
-│   ├── review/            # PRSummary, DiffViewer, CodeViewer, etc.
-│   ├── tambo/             # Chat UI components
-│   ├── content-panel.tsx  # Left panel (PR selector or file tree)
-│   └── chat-panel.tsx     # Right panel (Tambo chat)
-├── contexts/
-│   └── webcontainer-context.tsx  # WebContainer sync provider
-├── hooks/
-│   └── use-webcontainer-sync.ts  # Convex → WebContainer sync
-└── lib/
-    ├── types.ts           # Shared types from Convex schema
-    ├── tambo.ts           # Component + tool registration
-    └── webcontainer/      # WebContainer instance & tools
-
-convex/
-├── schema.ts          # users, repos, reviews, files, importStatus
-├── github.ts          # GitHub API actions (list PRs, get files)
-├── files.ts           # File queries/mutations
-├── fileActions.ts     # Import repo from GitHub, commit changes (Node.js actions)
-└── users.ts           # User management
+GitHub API → Convex (full response) → Frontend → Components
 ```
 
-## Modes
-
-- **PR Review**: Select repo → select PR → view diffs → chat about changes
-- **Code View**: Select repo → auto-import to Convex → sync to WebContainer → browse/edit files
-
-## WebContainer Flow
-
+**WebContainer Flow:**
 ```
-GitHub → importRepository → Convex files table → WebContainer (instant)
-                                                       ↓
-                                                  Edit files
-                                                       ↓
-                                              Convex (dirty flag)
-                                                       ↓
-                                         commitChangesToGitHub → GitHub
+GitHub → Convex files table → WebContainer mount → Live preview
 ```
 
-## Shared Types
-
-Use types from `src/lib/types.ts`:
-- `Repository`, `PullRequest`, `FileChange`, `FileTreeNode`
-- Doc types: `User`, `Repo`, `File`, `ImportStatus`
-
-## Tambo Features
-
-- 9 generative components (PRSummary, SecurityAlert, DiffViewer, etc.)
-- Interactable ReviewChecklist (AI can update)
-- 6 GitHub tools + 6 WebContainer tools
-- Voice input, suggestions, message images
-
-<!-- tambo-docs-v1.0 -->
+## Don't
+- Create wrapper types when Octokit/Convex types exist
+- Transform API responses in Convex (return full data)
+- Add backwards compatibility for unlaunched features

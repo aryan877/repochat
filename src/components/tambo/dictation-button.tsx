@@ -37,24 +37,26 @@ export default function DictationButton() {
 
   if (isTranscribing) {
     return (
-      <div className="p-2 rounded-md">
-        <Loader2Icon className="h-5 w-5 animate-spin" />
+      <div className="w-9 h-9 rounded-full flex items-center justify-center text-muted-foreground">
+        <Loader2Icon className="h-4 w-4 animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-row items-center gap-2">
-      <span className="text-sm text-red-500">{transcriptionError}</span>
+    <div className="flex flex-row items-center gap-1">
+      {transcriptionError && (
+        <span className="text-xs text-red-500">{transcriptionError}</span>
+      )}
       {isRecording ? (
         <Tooltip content="Stop">
           <button
             type="button"
             onClick={handleStopRecording}
             aria-label="Stop dictation"
-            className="p-2 rounded-md cursor-pointer hover:bg-muted"
+            className="w-9 h-9 rounded-full flex items-center justify-center text-red-500 hover:bg-red-500/10 transition-colors"
           >
-            <Square className="h-4 w-4 text-red-500 fill-current animate-pulse" />
+            <Square className="h-4 w-4 fill-current animate-pulse" />
           </button>
         </Tooltip>
       ) : (
@@ -63,9 +65,9 @@ export default function DictationButton() {
             type="button"
             onClick={handleStartRecording}
             aria-label="Start dictation"
-            className="p-2 rounded-md cursor-pointer hover:bg-muted"
+            className="w-9 h-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted-foreground/10 transition-colors"
           >
-            <Mic className="h-5 w-5" />
+            <Mic className="h-4 w-4" />
           </button>
         </Tooltip>
       )}

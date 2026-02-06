@@ -8,19 +8,21 @@ import { ReviewChecklist } from "./review/review-checklist";
 import { DiffViewer } from "./review/diff-viewer";
 import { CodeViewer } from "./review/code-viewer";
 import { FileExplorer } from "./review/file-explorer";
-import type { Repository, PullRequest, FileChange, FileTreeNode, ImportStatus } from "@/lib/types";
+import type { Repo, GitHubPRListItem, GitHubPRFile, FileNode, ImportStatus } from "@/types";
+
+type Repository = Pick<Repo, "_id" | "name" | "fullName">;
 
 interface ContentPanelProps {
   mode: ViewMode;
   repositories: Repository[];
   selectedRepo?: Repository;
   onRepoChange?: (repo: Repository) => void;
-  pullRequests?: PullRequest[];
-  selectedPR?: PullRequest;
-  onPRChange?: (pr: PullRequest) => void;
+  pullRequests?: GitHubPRListItem[];
+  selectedPR?: GitHubPRListItem;
+  onPRChange?: (pr: GitHubPRListItem) => void;
   isLoadingPRs?: boolean;
-  fileChanges?: FileChange[];
-  fileTree?: FileTreeNode[];
+  fileChanges?: GitHubPRFile[];
+  fileTree?: FileNode[];
   selectedFile?: {
     path: string;
     content: string;
@@ -170,11 +172,11 @@ export function ContentPanel({
                 </h3>
                 {fileChanges.map((file) => (
                   <DiffViewer
-                    key={file.filePath}
-                    filePath={file.filePath}
+                    key={file.filename}
+                    filePath={file.filename}
                     additions={file.additions}
                     deletions={file.deletions}
-                    patch={file.patch}
+                    patch={file.patch ?? ""}
                   />
                 ))}
               </div>

@@ -1,9 +1,19 @@
 import { v } from "convex/values";
-import { mutation, query, internalMutation } from "./_generated/server";
-import { Id } from "./_generated/dataModel";
+import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 
 // Get all files for a repository
 export const getRepoFiles = query({
+  args: { repoId: v.id("repos") },
+  handler: async (ctx, { repoId }) => {
+    return await ctx.db
+      .query("files")
+      .withIndex("by_repo", (q) => q.eq("repoId", repoId))
+      .collect();
+  },
+});
+
+// Internal: Get all files for a repository (for smart sync)
+export const getRepoFilesInternal = internalQuery({
   args: { repoId: v.id("repos") },
   handler: async (ctx, { repoId }) => {
     return await ctx.db
@@ -88,7 +98,7 @@ export const createFile = mutation({
   },
 });
 
-// Delete a file
+// Delete a file by path
 export const deleteFile = mutation({
   args: {
     repoId: v.id("repos"),
@@ -103,6 +113,16 @@ export const deleteFile = mutation({
     if (file) {
       await ctx.db.delete(file._id);
     }
+  },
+});
+
+// Delete a file by ID (internal, for smart sync)
+export const deleteFileById = internalMutation({
+  args: {
+    fileId: v.id("files"),
+  },
+  handler: async (ctx, { fileId }) => {
+    await ctx.db.delete(fileId);
   },
 });
 

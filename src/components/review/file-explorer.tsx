@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { z } from "zod";
-import type { FileTreeNode } from "@/lib/types";
+import type { FileNode } from "@/types/webcontainer";
 
-const FileNodeSchema: z.ZodType<FileTreeNode> = z.lazy(() =>
+const FileNodeSchema: z.ZodType<FileNode> = z.lazy(() =>
   z.object({
     name: z.string().describe("File or folder name"),
     path: z.string().describe("Full path from repo root"),
@@ -24,19 +24,19 @@ export const fileExplorerSchema = z.object({
 export interface FileExplorerProps {
   repoName: string;
   branch?: string;
-  tree: FileTreeNode[];
+  tree: FileNode[];
   selectedPath?: string;
   showChangesOnly?: boolean;
   onFileSelect?: (path: string) => void;
 }
 
-function FileTreeNodeComponent({
+function FileNodeComponent({
   node,
   depth = 0,
   selectedPath,
   onSelect,
 }: {
-  node: FileTreeNode;
+  node: FileNode;
   depth?: number;
   selectedPath?: string;
   onSelect?: (path: string) => void;
@@ -76,7 +76,7 @@ function FileTreeNodeComponent({
       {node.type === "directory" && isOpen && node.children && (
         <div>
           {node.children.map((child) => (
-            <FileTreeNodeComponent
+            <FileNodeComponent
               key={child.path}
               node={child}
               depth={depth + 1}
@@ -114,7 +114,7 @@ export function FileExplorer({
       <div className="py-2 max-h-[400px] overflow-y-auto">
         {tree.length > 0 ? (
           tree.map((node) => (
-            <FileTreeNodeComponent
+            <FileNodeComponent
               key={node.path}
               node={node}
               selectedPath={selected}

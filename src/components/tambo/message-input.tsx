@@ -1034,7 +1034,10 @@ const MessageInputSubmitButton = React.forwardRef<
   };
 
   const buttonClasses = cn(
-    "w-10 h-10 bg-foreground text-background rounded-lg hover:bg-foreground/90 disabled:opacity-50 flex items-center justify-center enabled:cursor-pointer",
+    "w-9 h-9 rounded-full flex items-center justify-center transition-colors disabled:opacity-40",
+    showCancelButton
+      ? "bg-muted-foreground/20 text-foreground hover:bg-muted-foreground/30"
+      : "bg-foreground text-background hover:bg-foreground/80",
     className,
   );
 
@@ -1053,9 +1056,9 @@ const MessageInputSubmitButton = React.forwardRef<
     >
       {children ??
         (showCancelButton ? (
-          <Square className="w-4 h-4" fill="currentColor" />
+          <Square className="w-3.5 h-3.5" fill="currentColor" />
         ) : (
-          <ArrowUp className="w-5 h-5" />
+          <ArrowUp className="w-4 h-4" strokeWidth={2.5} />
         ))}
     </button>
   );
@@ -1112,7 +1115,7 @@ const MessageInputMcpConfigButton = React.forwardRef<
   const [isModalOpen, setIsModalOpen] = React.useState(false);
 
   const buttonClasses = cn(
-    "w-10 h-10 rounded-lg border border-border bg-background text-foreground transition-colors hover:bg-muted disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+    "w-9 h-9 rounded-full text-muted-foreground transition-colors hover:text-foreground hover:bg-muted-foreground/10 disabled:opacity-40 flex items-center justify-center",
     className,
   );
 
@@ -1240,7 +1243,7 @@ const MessageInputFileButton = React.forwardRef<
   };
 
   const buttonClasses = cn(
-    "w-10 h-10 rounded-lg border border-border bg-background text-foreground transition-colors hover:bg-muted disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+    "w-9 h-9 rounded-full text-muted-foreground transition-colors hover:text-foreground hover:bg-muted-foreground/10 disabled:opacity-40 flex items-center justify-center",
     className,
   );
 

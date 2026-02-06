@@ -1,6 +1,7 @@
 "use client";
 
 import { WebContainer, FileSystemTree } from "@webcontainer/api";
+import type { FileNode } from "@/types/webcontainer";
 
 let webcontainerInstance: WebContainer | null = null;
 let bootPromise: Promise<WebContainer> | null = null;
@@ -66,19 +67,12 @@ export async function readDir(path: string): Promise<string[]> {
   });
 }
 
-export interface FileTreeNode {
-  name: string;
-  path: string;
-  type: "file" | "directory";
-  children?: FileTreeNode[];
-}
-
-export async function getFileTree(basePath: string = "."): Promise<FileTreeNode[]> {
+export async function getFileTree(basePath: string = "."): Promise<FileNode[]> {
   const wc = await getWebContainer();
 
-  async function buildTree(currentPath: string): Promise<FileTreeNode[]> {
+  async function buildTree(currentPath: string): Promise<FileNode[]> {
     const entries = await wc.fs.readdir(currentPath, { withFileTypes: true });
-    const nodes: FileTreeNode[] = [];
+    const nodes: FileNode[] = [];
 
     for (const entry of entries) {
       const name = typeof entry === "string" ? entry : entry.name;
@@ -88,7 +82,7 @@ export async function getFileTree(basePath: string = "."): Promise<FileTreeNode[
       // Skip node_modules and hidden files
       if (name === "node_modules" || name.startsWith(".")) continue;
 
-      const node: FileTreeNode = {
+      const node: FileNode = {
         name,
         path: fullPath,
         type: isDir ? "directory" : "file",
@@ -203,7 +197,7 @@ export async function startDevServer(
   );
 
   // Listen for server-ready event
-  wc.on("server-ready", (port, url) => {
+  wc.on("server-ready", (_port, url) => {
     onServerReady?.(url);
   });
 

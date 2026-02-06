@@ -2,108 +2,7 @@
 
 import { z } from "zod";
 import { TamboTool } from "@tambo-ai/react";
-
-// Type definitions for GitHub API responses
-type PullRequest = {
-  number: number;
-  title: string;
-  body: string | null;
-  state: string;
-  user: { login: string; avatar_url?: string };
-  head: { ref: string; sha: string };
-  base: { ref: string; sha: string };
-  html_url: string;
-  created_at?: string;
-  additions: number;
-  deletions: number;
-  changed_files: number;
-};
-
-type PRFile = {
-  filename: string;
-  status: string;
-  additions: number;
-  deletions: number;
-  patch?: string;
-};
-
-type FileContent = {
-  content: string;
-  sha: string;
-  decodedContent?: string;
-  size?: number;
-  path?: string;
-};
-
-type Review = {
-  id: number;
-  html_url: string;
-  state?: string;
-};
-
-type LineComment = {
-  id: number;
-  html_url?: string;
-  created_at?: string;
-};
-
-type MergeResult = {
-  sha: string;
-  merged: boolean;
-  message: string;
-};
-
-type RepoTree = {
-  tree: Array<{
-    path: string;
-    type: string;
-    sha: string;
-    size?: number;
-  }>;
-  truncated: boolean;
-};
-
-type SearchResult = {
-  total_count: number;
-  items: Array<{
-    name: string;
-    path: string;
-    sha: string;
-    html_url: string;
-  }>;
-};
-
-type PRListItem = {
-  number: number;
-  title: string;
-  state: string;
-  user: { login: string };
-  html_url: string;
-  created_at: string;
-};
-
-type Branch = {
-  name: string;
-  protected: boolean;
-};
-
-type GitHubActions = {
-  getPullRequest: (args: { clerkId: string; owner: string; repo: string; prNumber: number }) => Promise<PullRequest>;
-  getPullRequestFiles: (args: { clerkId: string; owner: string; repo: string; prNumber: number }) => Promise<PRFile[]>;
-  getFileContent: (args: { clerkId: string; owner: string; repo: string; path: string; ref?: string }) => Promise<FileContent>;
-  postReviewComment: (args: { clerkId: string; owner: string; repo: string; prNumber: number; body: string; path?: string; line?: number }) => Promise<LineComment>;
-  createReview: (args: { clerkId: string; owner: string; repo: string; prNumber: number; event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT"; body: string }) => Promise<Review>;
-  mergePullRequest: (args: { clerkId: string; owner: string; repo: string; prNumber: number; mergeMethod?: "merge" | "squash" | "rebase" }) => Promise<MergeResult>;
-  getRepoTree: (args: { clerkId: string; owner: string; repo: string; branch?: string }) => Promise<RepoTree>;
-  searchCode: (args: { clerkId: string; owner: string; repo: string; query: string }) => Promise<SearchResult>;
-  listPullRequests: (args: { clerkId: string; owner: string; repo: string; state?: "open" | "closed" | "all" }) => Promise<PRListItem[]>;
-  listBranches: (args: { clerkId: string; owner: string; repo: string }) => Promise<Branch[]>;
-};
-
-interface GitHubToolsConfig {
-  clerkId: string;
-  actions: GitHubActions;
-}
+import type { GitHubActions, GitHubToolsConfig } from "@/types/github";
 
 export function createGitHubTools({ clerkId, actions }: GitHubToolsConfig): TamboTool[] {
   const analyzePR: TamboTool = {
@@ -143,8 +42,8 @@ Returns PR metadata and list of changed files with diffs.`,
 
       return {
         title: pr.title,
-        author: pr.user.login,
-        authorAvatar: pr.user.avatar_url,
+        author: pr.user?.login ?? "unknown",
+        authorAvatar: pr.user?.avatar_url,
         state: pr.state,
         baseBranch: pr.base.ref,
         headBranch: pr.head.ref,
@@ -154,7 +53,7 @@ Returns PR metadata and list of changed files with diffs.`,
         createdAt: pr.created_at,
         url: pr.html_url,
         description: pr.body,
-        files: files.map((f: { filename: string; status: string; additions: number; deletions: number; patch?: string }) => ({
+        files: files.map((f) => ({
           filename: f.filename,
           status: f.status,
           additions: f.additions,
@@ -313,7 +212,7 @@ Use this when the user wants to explore a repository or see its structure.`,
       const data = await actions.getRepoTree({ clerkId, owner, repo, branch });
 
       return {
-        tree: data.tree.map((item: { path: string; type: string; size?: number }) => ({
+        tree: data.tree.map((item) => ({
           path: item.path,
           type: item.type === "blob" ? "file" : "directory",
           size: item.size,
@@ -345,7 +244,7 @@ Use this when the user wants to find specific code patterns or functions.`,
 
       return {
         totalCount: data.total_count,
-        items: data.items.map((item: { name: string; path: string; html_url: string }) => ({
+        items: data.items.map((item) => ({
           name: item.name,
           path: item.path,
           url: item.html_url,
@@ -377,11 +276,11 @@ Use this when the user wants to see open/closed PRs.`,
       const prs = await actions.listPullRequests({ clerkId, owner, repo, state });
 
       return {
-        pullRequests: prs.map((pr: { number: number; title: string; state: string; user: { login: string }; created_at: string; html_url: string }) => ({
+        pullRequests: prs.map((pr) => ({
           number: pr.number,
           title: pr.title,
           state: pr.state,
-          author: pr.user.login,
+          author: pr.user?.login ?? "unknown",
           createdAt: pr.created_at,
           url: pr.html_url,
         })),
@@ -407,7 +306,7 @@ Use this when the user wants to see available branches.`,
       const branches = await actions.listBranches({ clerkId, owner, repo });
 
       return {
-        branches: branches.map((b: { name: string; protected: boolean }) => ({
+        branches: branches.map((b) => ({
           name: b.name,
           protected: b.protected,
         })),

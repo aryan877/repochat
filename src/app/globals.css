@@ -118,19 +118,19 @@ html {
 
 /* Message input container */
 [data-slot="message-input-form"] > div {
-  background: var(--input) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: 1.5rem !important;
+  background: #1a1a1a !important;
+  border: 1px solid #2a2a2a !important;
+  border-radius: 1.75rem !important;
   box-shadow: none !important;
-  --tw-ring-shadow: 0 0 #0000 !important;
-  --tw-shadow: 0 0 #0000 !important;
+  padding: 0.75rem 1rem !important;
+  transition: border-color 0.15s ease !important;
 }
 
 [data-slot="message-input-form"] > div:focus-within {
-  border-color: var(--ring) !important;
+  border-color: #404040 !important;
 }
 
-/* Flatten ALL inner elements - no nested borders/backgrounds */
+/* Textarea styling */
 [data-slot="message-input-form"] [data-slot="message-input-textarea"],
 [data-slot="message-input-form"] [data-slot="message-input-textarea"] > div,
 [data-slot="message-input-form"] .tiptap,
@@ -140,6 +140,26 @@ html {
   border-radius: 0 !important;
   box-shadow: none !important;
   outline: none !important;
+}
+
+[data-slot="message-input-form"] .ProseMirror {
+  min-height: 24px !important;
+  max-height: 200px !important;
+  overflow-y: auto !important;
+  font-size: 15px !important;
+  line-height: 1.5 !important;
+  color: #e4e4e7 !important;
+}
+
+[data-slot="message-input-form"] .ProseMirror p.is-editor-empty:first-child::before {
+  color: #71717a !important;
+  font-size: 15px !important;
+}
+
+/* Toolbar spacing */
+[data-slot="message-input-toolbar"] {
+  margin-top: 0.5rem !important;
+  padding: 0 !important;
 }
 
 [data-slot="message-suggestions-list"] {

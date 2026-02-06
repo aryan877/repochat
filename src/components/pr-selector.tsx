@@ -2,15 +2,17 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import type { Repository, PullRequest } from "@/lib/types";
+import type { Repo, GitHubPRListItem } from "@/types";
+
+type Repository = Pick<Repo, "_id" | "name" | "fullName">;
 
 interface PRSelectorProps {
   repositories: Repository[];
   selectedRepo?: Repository;
   onRepoChange?: (repo: Repository) => void;
-  pullRequests?: PullRequest[];
-  selectedPR?: PullRequest;
-  onPRChange?: (pr: PullRequest) => void;
+  pullRequests?: GitHubPRListItem[];
+  selectedPR?: GitHubPRListItem;
+  onPRChange?: (pr: GitHubPRListItem) => void;
   isLoadingPRs?: boolean;
   className?: string;
 }
@@ -167,7 +169,7 @@ export function PRSelector({
                           "flex-shrink-0",
                           pr.state === "open"
                             ? "text-green-500"
-                            : pr.state === "merged"
+                            : pr.merged_at
                             ? "text-purple-500"
                             : "text-red-500"
                         )}
@@ -178,10 +180,7 @@ export function PRSelector({
                       </span>
                     </div>
                     <div className="flex items-center gap-3 mt-1 ml-5 text-xs text-[#525252]">
-                      <span>@{pr.author}</span>
-                      <span className="text-[#a3a3a3]">+{pr.additions}</span>
-                      <span className="text-[#525252]">-{pr.deletions}</span>
-                      <span>{pr.changedFiles} files</span>
+                      <span>@{pr.user?.login}</span>
                     </div>
                   </button>
                 ))
@@ -204,7 +203,7 @@ export function PRSelector({
                 className={cn(
                   selectedPR.state === "open"
                     ? "text-green-500"
-                    : selectedPR.state === "merged"
+                    : selectedPR.merged_at
                     ? "text-purple-500"
                     : "text-red-500"
                 )}
@@ -219,10 +218,7 @@ export function PRSelector({
             {selectedPR.title}
           </p>
           <div className="flex items-center gap-4 mt-2 text-xs text-[#525252]">
-            <span>@{selectedPR.author}</span>
-            <span className="text-[#a3a3a3]">+{selectedPR.additions}</span>
-            <span>-{selectedPR.deletions}</span>
-            <span>{selectedPR.changedFiles} files</span>
+            <span>@{selectedPR.user?.login}</span>
           </div>
         </div>
       )}

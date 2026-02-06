@@ -278,7 +278,6 @@ export const listPullRequests = action({
     const installationId = await getUserInstallation(ctx, clerkId);
     const octokit = createOctokitForInstallation(installationId);
 
-    // Use pagination - get up to 200 PRs max for reasonable performance
     const prs = await octokit.paginate(
       octokit.pulls.list,
       {
@@ -288,7 +287,6 @@ export const listPullRequests = action({
         per_page: 100,
       },
       (response, done) => {
-        // Stop after 200 PRs to prevent timeout
         if (response.data.length >= 200) {
           done();
         }
@@ -296,19 +294,7 @@ export const listPullRequests = action({
       }
     );
 
-    return prs.slice(0, 200).map((pr) => ({
-      number: pr.number,
-      title: pr.title,
-      state: pr.state,
-      user: { login: pr.user?.login || "unknown" },
-      html_url: pr.html_url,
-      created_at: pr.created_at,
-      updated_at: pr.updated_at,
-      merged_at: pr.merged_at,
-      additions: undefined, // Not available in list endpoint
-      deletions: undefined,
-      changed_files: undefined,
-    }));
+    return prs.slice(0, 200);
   },
 });
 
@@ -329,11 +315,7 @@ export const listBranches = action({
       per_page: 100,
     });
 
-    return branches.map((branch) => ({
-      name: branch.name,
-      commit: { sha: branch.commit.sha },
-      protected: branch.protected,
-    }));
+    return branches;
   },
 });
 
@@ -355,20 +337,7 @@ export const getPullRequestPublic = action({
       pull_number: prNumber,
     });
 
-    return {
-      number: data.number,
-      title: data.title,
-      body: data.body,
-      state: data.state,
-      user: { login: data.user?.login || "unknown", avatar_url: data.user?.avatar_url },
-      head: { ref: data.head.ref, sha: data.head.sha },
-      base: { ref: data.base.ref, sha: data.base.sha },
-      html_url: data.html_url,
-      created_at: data.created_at,
-      additions: data.additions,
-      deletions: data.deletions,
-      changed_files: data.changed_files,
-    };
+    return data;
   },
 });
 
@@ -391,13 +360,7 @@ export const getPullRequestFilesPublic = action({
       per_page: 100,
     });
 
-    return files.map((file) => ({
-      filename: file.filename,
-      status: file.status,
-      additions: file.additions,
-      deletions: file.deletions,
-      patch: file.patch,
-    }));
+    return files;
   },
 });
 
@@ -425,8 +388,11 @@ export const getFileContentPublic = action({
       throw new Error(`Path ${path} is not a file`);
     }
 
-    const content = Buffer.from(data.content, "base64").toString("utf-8");
-    return { content, sha: data.sha };
+    // Decode base64 content and return full data
+    return {
+      ...data,
+      content: Buffer.from(data.content, "base64").toString("utf-8"),
+    };
   },
 });
 
@@ -446,14 +412,13 @@ export const postReviewCommentPublic = action({
     const octokit = createOctokitForInstallation(installationId);
 
     if (path && line) {
-      // Get PR to get commit SHA
       const { data: pr } = await octokit.pulls.get({
         owner,
         repo,
         pull_number: prNumber,
       });
 
-      const { data: comment } = await octokit.pulls.createReviewComment({
+      const { data } = await octokit.pulls.createReviewComment({
         owner,
         repo,
         pull_number: prNumber,
@@ -464,17 +429,16 @@ export const postReviewCommentPublic = action({
         side: "RIGHT",
       });
 
-      return { id: comment.id, html_url: comment.html_url, created_at: comment.created_at };
+      return data;
     } else {
-      // Issue comment (not on specific line)
-      const { data: comment } = await octokit.issues.createComment({
+      const { data } = await octokit.issues.createComment({
         owner,
         repo,
         issue_number: prNumber,
         body,
       });
 
-      return { id: comment.id, html_url: comment.html_url, created_at: comment.created_at };
+      return data;
     }
   },
 });
@@ -505,7 +469,7 @@ export const createReview = action({
       event,
     });
 
-    return { id: data.id, html_url: data.html_url };
+    return data;
   },
 });
 
@@ -533,11 +497,7 @@ export const mergePullRequest = action({
       merge_method: mergeMethod,
     });
 
-    return {
-      sha: data.sha,
-      merged: data.merged,
-      message: data.message,
-    };
+    return data;
   },
 });
 
@@ -560,15 +520,7 @@ export const getRepoTree = action({
       recursive: "true",
     });
 
-    return {
-      tree: data.tree.map((item) => ({
-        path: item.path || "",
-        type: item.type || "",
-        sha: item.sha || "",
-        size: item.size,
-      })),
-      truncated: data.truncated || false,
-    };
+    return data;
   },
 });
 
@@ -589,14 +541,6 @@ export const searchCode = action({
       per_page: 30,
     });
 
-    return {
-      total_count: data.total_count,
-      items: data.items.map((item) => ({
-        name: item.name,
-        path: item.path,
-        sha: item.sha,
-        html_url: item.html_url,
-      })),
-    };
+    return data;
   },
 });

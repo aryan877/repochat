@@ -11,6 +11,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import Link from "next/link";
 import { MessageThreadFull } from "@/components/tambo/message-thread-full";
+import { CodeView } from "@/components/code-view";
 import type { Suggestion } from "@tambo-ai/react";
 import type { Id } from "../../convex/_generated/dataModel";
 type ViewMode = "chat" | "code";
@@ -117,31 +118,6 @@ function ModeToggle({ mode, onChange }: { mode: ViewMode; onChange: (mode: ViewM
         <CodeIcon />
         <span className="hidden sm:inline">Code</span>
       </button>
-    </div>
-  );
-}
-
-function CodeView({ repoId, repoName }: { repoId: Id<"repos"> | null; repoName: string | null }) {
-  return (
-    <div className="flex-1 flex items-center justify-center">
-      <div className="text-center max-w-md mx-auto px-6">
-        <div className="w-14 h-14 rounded-2xl bg-secondary flex items-center justify-center mx-auto mb-5">
-          <CodeIcon />
-        </div>
-        <h3 className="text-base font-medium text-foreground mb-2">
-          {repoId ? repoName : "Code Explorer"}
-        </h3>
-        <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
-          Browse repository files, run the dev server, and preview your app in the browser.
-        </p>
-        <div className="inline-flex items-center gap-2 px-4 py-2.5 bg-secondary/50 rounded-full text-xs text-muted-foreground">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-500/80" />
-          Coming soon
-        </div>
-        <p className="mt-4 text-xs text-muted-foreground/60">
-          Node.js projects only
-        </p>
-      </div>
     </div>
   );
 }

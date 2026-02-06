@@ -1,6 +1,7 @@
 "use client";
 
 import { z } from "zod";
+import { useTamboStreamStatus } from "@tambo-ai/react";
 
 export const prSummarySchema = z.object({
   title: z.string().describe("PR title"),
@@ -34,13 +35,35 @@ export function PRSummary({
   url = "",
   description,
 }: PRSummaryProps) {
+  const { streamStatus } = useTamboStreamStatus();
   const formattedDate = createdAt ? new Date(createdAt).toLocaleDateString() : "";
+
+  if (streamStatus?.isStreaming && !title) {
+    return (
+      <div className="py-4 animate-pulse">
+        <div className="h-3 w-20 bg-[#1f1f1f] rounded mb-3" />
+        <div className="h-4 w-64 bg-[#1f1f1f] rounded mb-3" />
+        <div className="h-3 w-40 bg-[#1f1f1f] rounded mb-3" />
+        <div className="flex gap-6">
+          <div className="h-3 w-12 bg-[#1f1f1f] rounded" />
+          <div className="h-3 w-12 bg-[#1f1f1f] rounded" />
+          <div className="h-3 w-16 bg-[#1f1f1f] rounded" />
+        </div>
+      </div>
+    );
+  }
+
+  const stateColors: Record<string, string> = {
+    open: "text-[#4ade80]",
+    closed: "text-[#f87171]",
+    merged: "text-[#a78bfa]",
+  };
 
   return (
     <div className="py-4">
       <div className="flex items-baseline gap-2 mb-2">
         <span className="text-xs text-[#525252]">#{number}</span>
-        <span className="text-xs text-[#525252]">{state}</span>
+        <span className={`text-xs ${stateColors[state] || "text-[#525252]"}`}>{state}</span>
       </div>
 
       <h3 className="text-[#fafafa] text-sm font-medium mb-2">{title}</h3>
@@ -50,8 +73,8 @@ export function PRSummary({
       </p>
 
       <div className="flex gap-6 text-xs mb-3">
-        <span className="text-[#a3a3a3]">+{additions}</span>
-        <span className="text-[#a3a3a3]">-{deletions}</span>
+        <span className="text-[#4ade80]">+{additions}</span>
+        <span className="text-[#f87171]">-{deletions}</span>
         <span className="text-[#525252]">{changedFiles} files</span>
       </div>
 

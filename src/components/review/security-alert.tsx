@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { z } from "zod";
+import { useTamboStreamStatus } from "@tambo-ai/react";
 
 export const securityAlertSchema = z.object({
   severity: z.enum(["critical", "high", "medium", "low"]).describe("Severity level of the security issue"),
@@ -27,6 +28,18 @@ export function SecurityAlert({
   cweId,
 }: SecurityAlertProps) {
   const [copied, setCopied] = useState(false);
+  const { streamStatus } = useTamboStreamStatus();
+
+  if (streamStatus?.isStreaming && !title) {
+    return (
+      <div className="py-4 animate-pulse">
+        <div className="h-3 w-16 bg-[#1f1f1f] rounded mb-3" />
+        <div className="h-4 w-48 bg-[#1f1f1f] rounded mb-3" />
+        <div className="h-3 w-full bg-[#1f1f1f] rounded mb-2" />
+        <div className="h-3 w-3/4 bg-[#1f1f1f] rounded" />
+      </div>
+    );
+  }
 
   const handleCopy = () => {
     if (codeSnippet) {

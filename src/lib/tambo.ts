@@ -9,6 +9,9 @@ import { FileExplorer, fileExplorerSchema } from "@/components/review/file-explo
 import { PlanView, planViewSchema } from "@/components/review/plan-view";
 import { CommitCard, commitCardSchema } from "@/components/review/commit-card";
 import { CodeExplainer, codeExplainerSchema } from "@/components/review/code-explainer";
+import { PRStatsChart, prStatsChartSchema } from "@/components/review/pr-stats-chart";
+import { ReviewHeatmap, reviewHeatmapSchema } from "@/components/review/review-heatmap";
+import { CodeFlow, codeFlowSchema } from "@/components/review/code-flow";
 
 export const components: TamboComponent[] = [
   {
@@ -83,6 +86,30 @@ TRIGGER: "Explain this function", "How does this work?", "What does this do?"`,
     component: CodeExplainer,
     propsSchema: codeExplainerSchema,
   },
+  {
+    name: "PRStatsChart",
+    description: `Render when visualizing PR statistics as charts. Shows bar charts of per-file
+additions/deletions or pie charts of change distribution across files.
+TRIGGER: "Show PR stats", "Visualize the changes", "Chart the file changes", after analyzing a PR`,
+    component: PRStatsChart,
+    propsSchema: prStatsChartSchema,
+  },
+  {
+    name: "ReviewHeatmap",
+    description: `Render when showing which files have the most changes or issues. Displays a
+visual heatmap/grid where larger, redder tiles indicate more changes or higher severity issues.
+TRIGGER: "Show hotspots", "Which files changed most?", "Where are the issues?", after a security review`,
+    component: ReviewHeatmap,
+    propsSchema: reviewHeatmapSchema,
+  },
+  {
+    name: "CodeFlow",
+    description: `Render when visualizing code dependencies and file relationships. Shows an interactive
+graph with files as nodes and import/dependency relationships as edges. Nodes are color-coded by severity.
+TRIGGER: "Show code flow", "Visualize dependencies", "How are files connected?", "Show file relationships"`,
+    component: CodeFlow,
+    propsSchema: codeFlowSchema,
+  },
 ];
 
 export {
@@ -95,4 +122,7 @@ export {
   PlanView,
   CommitCard,
   CodeExplainer,
+  PRStatsChart,
+  ReviewHeatmap,
+  CodeFlow,
 };

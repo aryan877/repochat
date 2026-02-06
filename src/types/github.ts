@@ -209,7 +209,7 @@ export interface GitHubActions {
     owner: string;
     repo: string;
     state?: "open" | "closed" | "all";
-  }) => Promise<GitHubPRListItem[]>;
+  }) => Promise<OctokitPRList[]>;
 
   listBranches: (args: {
     clerkId: string;

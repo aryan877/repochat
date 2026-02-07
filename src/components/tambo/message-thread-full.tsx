@@ -3,6 +3,7 @@
 import type { messageVariants } from "@/components/tambo/message";
 import {
   MessageInput,
+  MessageInputContextAttachButton,
   MessageInputError,
   MessageInputFileButton,
   MessageInputSubmitButton,
@@ -167,6 +168,7 @@ export const MessageThreadFull = React.forwardRef<
             />
             <MessageInputToolbar>
               <MessageInputFileButton />
+              <MessageInputContextAttachButton />
               <MessageInputSubmitButton />
             </MessageInputToolbar>
             <MessageInputError />

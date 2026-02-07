@@ -56,7 +56,7 @@ export interface GitHubPullRequest {
   changed_files: number;
 }
 
-/** PR list item - returned by listPullRequests */
+/** PR list item - returned by listPullRequests (list endpoint doesn't include additions/deletions) */
 export interface GitHubPRListItem {
   number: number;
   title: string;
@@ -66,9 +66,6 @@ export interface GitHubPRListItem {
   created_at: string;
   updated_at: string;
   merged_at: string | null;
-  additions: undefined;
-  deletions: undefined;
-  changed_files: undefined;
 }
 
 /** PR file - returned by getPullRequestFilesPublic */

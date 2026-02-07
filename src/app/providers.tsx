@@ -1,18 +1,17 @@
 "use client";
 
-import { ClerkProvider, useUser } from "@clerk/nextjs";
-import { ConvexProviderWithClerk } from "convex/react-clerk";
-import { ConvexReactClient, useAction } from "convex/react";
-import { useAuth } from "@clerk/nextjs";
-import { TamboProvider } from "@tambo-ai/react";
 import { components } from "@/lib/tambo";
 import { createGitHubTools } from "@/lib/tools";
+import { ClerkProvider, useAuth, useUser } from "@clerk/nextjs";
+import { TamboProvider, currentTimeContextHelper } from "@tambo-ai/react";
+import { TamboMcpProvider } from "@tambo-ai/react/mcp";
+import { ConvexReactClient, useAction, useQuery } from "convex/react";
+import { ConvexProviderWithClerk } from "convex/react-clerk";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import { api } from "../../convex/_generated/api";
-import { ReactNode, useMemo, useState, useEffect } from "react";
-import { useQuery } from "convex/react";
 
 const convex = new ConvexReactClient(
-  process.env.NEXT_PUBLIC_CONVEX_URL as string
+  process.env.NEXT_PUBLIC_CONVEX_URL as string,
 );
 
 const systemPrompt = `You are RepoChat, an AI-powered code review assistant with Generative UI.
@@ -101,7 +100,7 @@ function TamboProviderWithAuth({ children }: { children: ReactNode }) {
 
   const githubStatus = useQuery(
     api.users.getGitHubStatus,
-    clerkId ? { clerkId } : "skip"
+    clerkId ? { clerkId } : "skip",
   );
 
   const getPullRequest = useAction(api.github.getPullRequestPublic);
@@ -192,6 +191,13 @@ Click **Connect GitHub** in the sidebar to begin.`;
       userToken={accessToken}
       components={components}
       tools={tools}
+      contextKey={`repochat-${clerkId}`}
+      autoGenerateThreadName={true}
+      autoGenerateNameThreshold={3}
+      contextHelpers={{
+        currentTime: currentTimeContextHelper,
+        githubUser: () => githubStatus?.github?.username || null,
+      }}
       initialMessages={[
         {
           id: "system",
@@ -209,7 +215,9 @@ Click **Connect GitHub** in the sidebar to begin.`;
         },
       ]}
     >
-      {children}
+      <TamboMcpProvider>
+        {children}
+      </TamboMcpProvider>
     </TamboProvider>
   );
 }

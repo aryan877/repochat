@@ -15,6 +15,7 @@ import {
   useIsTamboTokenUpdating,
   useTamboThread,
   useTamboThreadInput,
+  useTamboContextAttachment,
   type StagedImage,
 } from "@tambo-ai/react";
 import {
@@ -1275,6 +1276,127 @@ const MessageInputFileButton = React.forwardRef<
 MessageInputFileButton.displayName = "MessageInput.FileButton";
 
 /**
+ * Context attachment button - lets users attach text context to messages.
+ * Uses useTamboContextAttachment to attach one-time context that gets sent with the next message.
+ */
+const MessageInputContextAttachButton = React.forwardRef<
+  HTMLButtonElement,
+  React.ButtonHTMLAttributes<HTMLButtonElement>
+>(({ className, ...props }, ref) => {
+  const { attachments, addContextAttachment, removeContextAttachment } = useTamboContextAttachment();
+  const [showInput, setShowInput] = React.useState(false);
+  const [contextText, setContextText] = React.useState("");
+  const [contextName, setContextName] = React.useState("");
+  const inputRef = React.useRef<HTMLTextAreaElement>(null);
+
+  React.useEffect(() => {
+    if (showInput && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [showInput]);
+
+  const handleAdd = () => {
+    if (!contextText.trim()) return;
+    addContextAttachment({
+      displayName: contextName.trim() || "Context",
+      context: contextText.trim(),
+      type: "text",
+    });
+    setContextText("");
+    setContextName("");
+    setShowInput(false);
+  };
+
+  const buttonClasses = cn(
+    "w-9 h-9 rounded-full text-muted-foreground transition-colors hover:text-foreground hover:bg-muted-foreground/10 disabled:opacity-40 flex items-center justify-center relative",
+    attachments.length > 0 && "text-blue-400",
+    className,
+  );
+
+  return (
+    <>
+      <Tooltip content="Attach Context" side="top">
+        <button
+          ref={ref}
+          type="button"
+          onClick={() => setShowInput(!showInput)}
+          className={buttonClasses}
+          aria-label="Attach Context"
+          data-slot="message-input-context-attach-button"
+          {...props}
+        >
+          <FileText className="w-4 h-4" />
+          {attachments.length > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-blue-500 text-white text-[8px] rounded-full flex items-center justify-center">
+              {attachments.length}
+            </span>
+          )}
+        </button>
+      </Tooltip>
+
+      {showInput && (
+        <div className="absolute bottom-full left-0 right-0 mb-2 bg-card border border-secondary rounded-lg p-3 shadow-xl z-50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-foreground">Attach Context</span>
+            <button onClick={() => setShowInput(false)} className="text-muted-foreground hover:text-foreground">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+          <input
+            type="text"
+            placeholder="Label (e.g. 'auth.ts snippet')"
+            value={contextName}
+            onChange={(e) => setContextName(e.target.value)}
+            className="w-full px-2 py-1 text-xs bg-background border border-secondary rounded mb-2 text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-ring"
+          />
+          <textarea
+            ref={inputRef}
+            placeholder="Paste code, file content, or context here..."
+            value={contextText}
+            onChange={(e) => setContextText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                handleAdd();
+              }
+            }}
+            className="w-full px-2 py-1.5 text-xs bg-background border border-secondary rounded text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-ring resize-none font-mono"
+            rows={4}
+          />
+          <div className="flex items-center justify-between mt-2">
+            <span className="text-[10px] text-muted-foreground/50">Cmd+Enter to add</span>
+            <button
+              onClick={handleAdd}
+              disabled={!contextText.trim()}
+              className="px-2.5 py-1 text-xs bg-secondary text-foreground rounded hover:bg-accent transition-colors disabled:opacity-40"
+            >
+              Add
+            </button>
+          </div>
+
+          {attachments.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-secondary space-y-1">
+              {attachments.map((a) => (
+                <div key={a.id} className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground truncate">{a.displayName}</span>
+                  <button
+                    onClick={() => removeContextAttachment(a.id)}
+                    className="text-muted-foreground/50 hover:text-red-400 ml-2"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+});
+MessageInputContextAttachButton.displayName = "MessageInput.ContextAttachButton";
+
+/**
  * Props for the MessageInputMcpPromptButton component.
  */
 export type MessageInputMcpPromptButtonProps =
@@ -1596,6 +1718,7 @@ MessageInputToolbar.displayName = "MessageInput.Toolbar";
 export {
   DictationButton,
   MessageInput,
+  MessageInputContextAttachButton,
   MessageInputContexts,
   MessageInputError,
   MessageInputFileButton,

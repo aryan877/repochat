@@ -143,11 +143,9 @@ export default function Home() {
 
   // Tambo thread management
   const {
-    thread,
     currentThreadId,
     switchCurrentThread,
     startNewThread,
-    generateThreadName,
   } = useTamboThread();
   const threadListResult = useTamboThreadList();
   const threads = threadListResult.data;
@@ -185,15 +183,6 @@ export default function Home() {
   useEffect(() => {
     setMounted(true);
   }, []);
-
-  // Auto-generate thread name after a few messages
-  useEffect(() => {
-    if (thread?.messages && thread.messages.length === 3 && currentThreadId) {
-      generateThreadName(currentThreadId).catch(() => {
-        // Name generation is best-effort
-      });
-    }
-  }, [thread?.messages?.length, currentThreadId, generateThreadName]);
 
   useEffect(() => {
     if (isLoaded && !user) {

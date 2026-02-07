@@ -4,7 +4,7 @@ import { components } from "@/lib/tambo";
 import { createGitHubTools } from "@/lib/tools";
 import { ClerkProvider, useAuth, useUser } from "@clerk/nextjs";
 import { TamboProvider, currentTimeContextHelper } from "@tambo-ai/react";
-import { TamboMcpProvider } from "@tambo-ai/react/mcp";
+import { TamboMcpProvider, MCPTransport } from "@tambo-ai/react/mcp";
 import { ConvexReactClient, useAction, useQuery } from "convex/react";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { ReactNode, useEffect, useMemo, useState } from "react";
@@ -103,6 +103,25 @@ function TamboProviderWithAuth({ children }: { children: ReactNode }) {
     clerkId ? { clerkId } : "skip",
   );
 
+  // Load user's saved MCP server configurations
+  const userMcpServers = useQuery(
+    api.mcpServers.getUserMcpServers,
+    clerkId ? { clerkId } : "skip",
+  );
+
+  const mcpServers = useMemo(() => {
+    if (!userMcpServers || userMcpServers.length === 0) return undefined;
+    return userMcpServers.map((server) => ({
+      name: server.label,
+      url: server.url,
+      transport: server.transport === "sse" ? MCPTransport.SSE : MCPTransport.HTTP,
+      serverKey: server.provider,
+      customHeaders: Object.fromEntries(
+        Object.entries(server.headers).filter(([, v]) => v != null) as [string, string][]
+      ),
+    }));
+  }, [userMcpServers]);
+
   const getPullRequest = useAction(api.github.getPullRequestPublic);
   const getPullRequestFiles = useAction(api.github.getPullRequestFilesPublic);
   const getFileContent = useAction(api.github.getFileContentPublic);
@@ -149,13 +168,17 @@ function TamboProviderWithAuth({ children }: { children: ReactNode }) {
     listBranches,
   ]);
 
+  const mcpContext = userMcpServers && userMcpServers.length > 0
+    ? `\n\n## MCP INTEGRATIONS\n\nThe user has ${userMcpServers.length} MCP integration(s) connected: ${userMcpServers.map((s) => s.label).join(", ")}. You have access to their tools — use them when the user asks about databases, tables, or connected services.`
+    : "";
+
   const enhancedSystemPrompt = githubStatus?.connected
-    ? `${systemPrompt}
+    ? `${systemPrompt}${mcpContext}
 
 ## CONNECTED
 
 GitHub connected as @${githubStatus.github?.username}. Tools are ready to use.`
-    : `${systemPrompt}
+    : `${systemPrompt}${mcpContext}
 
 ## NOT CONNECTED
 
@@ -191,6 +214,7 @@ Click **Connect GitHub** in the sidebar to begin.`;
       userToken={accessToken}
       components={components}
       tools={tools}
+      mcpServers={mcpServers}
       contextKey={`repochat-${clerkId}`}
       autoGenerateThreadName={true}
       autoGenerateNameThreshold={3}

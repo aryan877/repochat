@@ -1,10 +1,10 @@
 # AGENT.md
 
 ## What is this?
-RepoChat - AI code review app with GitHub integration, WebContainers for live preview, and Tambo for generative UI.
+RepoChat — AI code review assistant. Review PRs, analyze code, run SQL on your own database, all from chat.
 
 ## Stack
-Next.js 15, Convex, Clerk, Tambo AI, WebContainers, Octokit
+Next.js 15, Convex, Clerk, Tambo AI, MCP, Octokit
 
 ## Commands
 ```bash
@@ -12,23 +12,15 @@ npm run dev      # Next.js + Convex
 npx tsc --noEmit # Type check
 ```
 
-## Key Patterns
+## Architecture
 
-**Types:** All in `src/types/`. Use Octokit types for GitHub, Convex Doc types for DB. Don't create UI-specific types - just Pick<> what you need inline.
+**GitHub tools** — Convex actions call Octokit, registered as Tambo tools. AI calls them to review PRs, post comments, merge, etc.
 
-**Convex:** Returns full Octokit responses, no transformation. Types stay in sync automatically.
+**MCP integrations** — Users connect their own services (Supabase, etc.) from Settings. Configs stored in Convex, browser connects directly to MCP servers. Fully reactive — add/remove servers without reloading.
 
-**Data Flow:**
-```
-GitHub API → Convex (full response) → Frontend → Components
-```
-
-**WebContainer Flow:**
-```
-GitHub → Convex files table → WebContainer mount → Live preview
-```
+**Generative UI** — 12 components the AI renders contextually (PRSummary, SecurityAlert, DiffViewer, CodeFlow, etc.). ReviewChecklist is an interactable — AI adds findings, user checks them off, state syncs both ways.
 
 ## Don't
 - Create wrapper types when Octokit/Convex types exist
 - Transform API responses in Convex (return full data)
-- Add backwards compatibility for unlaunched features
+- Route MCP through the backend — it's client-side by design

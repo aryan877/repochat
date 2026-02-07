@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="100%" stop-color="#6366F1"/>
+    </linearGradient>
+  </defs>
+  <!-- Rounded square background -->
+  <rect width="512" height="512" rx="108" fill="url(#bg)"/>
+  <!-- Chat bubble -->
+  <path d="M136 148h240c22 0 40 18 40 40v144c0 22-18 40-40 40H232l-64 52v-52h-32c-22 0-40-18-40-40V188c0-22 18-40 40-40z" fill="rgba(255,255,255,0.15)" stroke="white" stroke-width="12" stroke-linejoin="round"/>
+  <!-- Code brackets < > -->
+  <path d="M216 228l-40 40 40 40" stroke="white" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M296 228l40 40-40 40" stroke="white" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Slash / -->
+  <line x1="272" y1="218" x2="240" y2="298" stroke="white" stroke-width="14" stroke-linecap="round" opacity="0.8"/>
+</svg>

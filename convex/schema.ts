@@ -206,6 +206,20 @@ export default defineSchema({
     .index("by_repo", ["repoId"])
     .index("by_repo_path", ["repoId", "path"]),
 
+  // User MCP server configurations (per-user dynamic MCP connections)
+  userMcpServers: defineTable({
+    clerkId: v.string(),
+    provider: v.string(), // "supabase", "custom", etc.
+    label: v.string(), // Display name
+    url: v.string(),
+    transport: v.union(v.literal("http"), v.literal("sse")),
+    headers: v.object({
+      Authorization: v.optional(v.string()),
+    }),
+    createdAt: v.number(),
+  })
+    .index("by_clerk_id", ["clerkId"]),
+
   // Import status for tracking repository file imports
   importStatus: defineTable({
     repoId: v.id("repos"),

@@ -1,12 +1,61 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import Link from "next/link";
 import type { Id } from "../../../convex/_generated/dataModel";
+
+const PlugIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 22v-5" />
+    <path d="M9 8V2" />
+    <path d="M15 8V2" />
+    <path d="M18 8v5a6 6 0 0 1-6 6v0a6 6 0 0 1-6-6V8z" />
+  </svg>
+);
+
+const TrashIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 6h18" />
+    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+  </svg>
+);
+
+const CheckIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+);
+
+const MCP_TEMPLATES = [
+  {
+    id: "supabase",
+    name: "Supabase",
+    description: "Query your Supabase database, manage tables, run SQL",
+    urlTemplate: (projectRef: string) =>
+      `https://mcp.supabase.com/mcp?project_ref=${projectRef}`,
+    transport: "http" as const,
+    fields: [
+      { key: "projectRef", label: "Project Ref", placeholder: "e.g. abcdefghijklmnop" },
+      { key: "accessToken", label: "Access Token", placeholder: "sbp_...", type: "password" },
+    ],
+  },
+  {
+    id: "custom",
+    name: "Custom MCP Server",
+    description: "Connect any MCP-compatible server",
+    urlTemplate: (url: string) => url,
+    transport: "http" as const,
+    fields: [
+      { key: "url", label: "Server URL", placeholder: "https://your-mcp-server.com/mcp" },
+      { key: "accessToken", label: "Authorization Header (optional)", placeholder: "Bearer ...", type: "password" },
+    ],
+  },
+];
 
 const ArrowLeftIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -54,6 +103,66 @@ export default function SettingsPage() {
   );
 
   const updateRepoSettings = useMutation(api.users.updateRepoSettings);
+
+  // MCP server management
+  const userMcpServers = useQuery(
+    api.mcpServers.getUserMcpServers,
+    user?.id ? { clerkId: user.id } : "skip"
+  );
+  const addMcpServer = useMutation(api.mcpServers.addMcpServer);
+  const removeMcpServer = useMutation(api.mcpServers.removeMcpServer);
+
+  const [mcpAddOpen, setMcpAddOpen] = useState(false);
+  const [mcpTemplate, setMcpTemplate] = useState<string | null>(null);
+  const [mcpFields, setMcpFields] = useState<Record<string, string>>({});
+  const [mcpSaving, setMcpSaving] = useState(false);
+
+  const handleAddMcpServer = useCallback(async () => {
+    if (!user?.id || !mcpTemplate) return;
+    const template = MCP_TEMPLATES.find((t) => t.id === mcpTemplate);
+    if (!template) return;
+
+    setMcpSaving(true);
+    try {
+      let url: string;
+      let label: string;
+
+      if (mcpTemplate === "supabase") {
+        url = template.urlTemplate(mcpFields.projectRef || "");
+        label = `Supabase (${mcpFields.projectRef?.slice(0, 8) || "project"})`;
+      } else {
+        url = mcpFields.url || "";
+        label = new URL(url).hostname;
+      }
+
+      await addMcpServer({
+        clerkId: user.id,
+        provider: mcpTemplate,
+        label,
+        url,
+        transport: template.transport,
+        authHeader: mcpFields.accessToken
+          ? (mcpFields.accessToken.startsWith("Bearer ") ? mcpFields.accessToken : `Bearer ${mcpFields.accessToken}`)
+          : undefined,
+      });
+
+      setMcpAddOpen(false);
+      setMcpTemplate(null);
+      setMcpFields({});
+    } catch (error) {
+      console.error("Failed to add MCP server:", error);
+    } finally {
+      setMcpSaving(false);
+    }
+  }, [user?.id, mcpTemplate, mcpFields, addMcpServer]);
+
+  const handleRemoveMcpServer = useCallback(async (id: Id<"userMcpServers">) => {
+    try {
+      await removeMcpServer({ id });
+    } catch (error) {
+      console.error("Failed to remove MCP server:", error);
+    }
+  }, [removeMcpServer]);
 
   useEffect(() => {
     setMounted(true);
@@ -220,6 +329,130 @@ export default function SettingsPage() {
                 </a>
               </div>
             )}
+          </section>
+
+          {/* MCP Integrations */}
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-medium text-[#71717a] uppercase tracking-wider">MCP Integrations</h2>
+              <button
+                onClick={() => { setMcpAddOpen(!mcpAddOpen); setMcpTemplate(null); setMcpFields({}); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[#2a2a2d] hover:bg-[#3a3a3d] rounded-lg transition-colors"
+              >
+                <span>{mcpAddOpen ? "Cancel" : "Add integration"}</span>
+              </button>
+            </div>
+
+            {/* Add MCP form */}
+            {mcpAddOpen && (
+              <div className="bg-[#1e1e20] border border-[#2a2a2d] rounded-xl p-5 mb-4">
+                {!mcpTemplate ? (
+                  <div className="space-y-2">
+                    <p className="text-sm text-[#71717a] mb-3">Choose an integration:</p>
+                    {MCP_TEMPLATES.map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => setMcpTemplate(t.id)}
+                        className="w-full text-left p-4 bg-[#131314] border border-[#2a2a2d] rounded-lg hover:border-[#3a3a3d] transition-colors"
+                      >
+                        <div className="font-medium">{t.name}</div>
+                        <div className="text-xs text-[#52525b] mt-0.5">{t.description}</div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => { setMcpTemplate(null); setMcpFields({}); }}
+                        className="text-xs text-[#71717a] hover:text-[#e4e4e7]"
+                      >
+                        &larr; Back
+                      </button>
+                      <span className="text-sm font-medium">
+                        {MCP_TEMPLATES.find((t) => t.id === mcpTemplate)?.name}
+                      </span>
+                    </div>
+
+                    {MCP_TEMPLATES.find((t) => t.id === mcpTemplate)?.fields.map((field) => (
+                      <div key={field.key}>
+                        <label className="block text-xs text-[#71717a] mb-1.5">{field.label}</label>
+                        <input
+                          type={field.type || "text"}
+                          placeholder={field.placeholder}
+                          value={mcpFields[field.key] || ""}
+                          onChange={(e) => setMcpFields((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                          className="w-full px-3 py-2 text-sm bg-[#131314] border border-[#2a2a2d] rounded-lg text-[#e4e4e7] placeholder:text-[#52525b] focus:outline-none focus:border-[#3b82f6]"
+                        />
+                      </div>
+                    ))}
+
+                    <button
+                      onClick={handleAddMcpServer}
+                      disabled={mcpSaving}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium bg-[#3b82f6] hover:bg-[#2563eb] disabled:opacity-50 rounded-lg transition-colors"
+                    >
+                      {mcpSaving ? "Connecting..." : "Connect"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Connected MCP servers */}
+            {userMcpServers && userMcpServers.length > 0 ? (
+              <div className="space-y-2">
+                {userMcpServers.map((server) => (
+                  <div
+                    key={server._id}
+                    className="bg-[#1e1e20] border border-[#2a2a2d] rounded-xl p-4"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-[#2a2a2d] flex items-center justify-center text-[#71717a]">
+                          <PlugIcon />
+                        </div>
+                        <div>
+                          <div className="font-medium">{server.label}</div>
+                          <div className="text-xs text-[#52525b]">
+                            {server.provider} · {server.transport.toUpperCase()}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border border-green-500/30 bg-green-500/10 text-green-400">
+                          <CheckIcon />
+                          Connected
+                        </span>
+                        <button
+                          onClick={() => handleRemoveMcpServer(server._id)}
+                          className="p-1.5 text-[#52525b] hover:text-[#ef4444] transition-colors"
+                          title="Remove"
+                        >
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : !mcpAddOpen ? (
+              <div className="bg-[#1e1e20] border border-[#2a2a2d] rounded-xl p-8 text-center">
+                <div className="w-12 h-12 rounded-full bg-[#2a2a2d] flex items-center justify-center mx-auto mb-4">
+                  <PlugIcon />
+                </div>
+                <h3 className="font-medium mb-2">No integrations connected</h3>
+                <p className="text-sm text-[#71717a] mb-4">
+                  Connect MCP servers to give the AI access to your databases, tools, and services
+                </p>
+                <button
+                  onClick={() => setMcpAddOpen(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-[#e4e4e7] text-[#131314] hover:bg-[#d4d4d7] rounded-lg transition-colors"
+                >
+                  Add your first integration
+                </button>
+              </div>
+            ) : null}
           </section>
 
           <section>

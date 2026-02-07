@@ -15,6 +15,7 @@ import type * as githubHelpers from "../githubHelpers.js";
 import type * as http from "../http.js";
 import type * as indexing from "../indexing.js";
 import type * as indexingMutations from "../indexingMutations.js";
+import type * as mcpServers from "../mcpServers.js";
 import type * as repos from "../repos.js";
 import type * as reviews from "../reviews.js";
 import type * as reviewsMutations from "../reviewsMutations.js";
@@ -37,6 +38,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   indexing: typeof indexing;
   indexingMutations: typeof indexingMutations;
+  mcpServers: typeof mcpServers;
   repos: typeof repos;
   reviews: typeof reviews;
   reviewsMutations: typeof reviewsMutations;

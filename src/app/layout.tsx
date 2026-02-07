@@ -15,9 +15,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "RepoChat - AI Code Review Assistant",
-  description: "Review PRs, analyze code, and take GitHub actions with Generative UI",
+  description:
+    "AI code review that understands your entire codebase — not just the diff.",
   icons: {
     icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
   },
 };
 

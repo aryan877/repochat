@@ -9,10 +9,11 @@
 </p>
 
 <p align="center">
+  <a href="https://tambo.co"><img src="public/Tambo-Lockup.svg" height="24" alt="Tambo" /></a>
+  &nbsp;
   <a href="https://nextjs.org"><img src="https://img.shields.io/badge/Next.js-15-black?logo=next.js&logoColor=white" alt="Next.js 15" /></a>
   <a href="https://react.dev"><img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" alt="React 19" /></a>
-  <a href="https://tambo.co"><img src="https://img.shields.io/badge/Tambo-Generative_UI-8B5CF6" alt="Tambo" /></a>
-  <a href="https://convex.dev"><img src="https://img.shields.io/badge/Convex-Realtime-EF4444?logo=convex" alt="Convex" /></a>
+  <a href="https://convex.dev"><img src="https://img.shields.io/badge/Convex-Realtime-EF4444" alt="Convex" /></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-Per_User-10B981" alt="MCP" /></a>
   <a href="https://tree-sitter.github.io"><img src="https://img.shields.io/badge/Tree--sitter-11_Languages-F59E0B" alt="Tree-sitter" /></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License" /></a>
@@ -293,13 +294,15 @@ repochat/
 ## Built With
 
 <p align="center">
-  <a href="https://tambo.co"><img src="public/Tambo-Lockup.svg" height="40" alt="Tambo" /></a>
-  &nbsp;&nbsp;&nbsp;
-  <a href="https://convex.dev"><img src="https://img.shields.io/badge/Convex-Backend-EF4444?style=for-the-badge" alt="Convex" /></a>
-  &nbsp;&nbsp;&nbsp;
-  <a href="https://clerk.com"><img src="https://img.shields.io/badge/Clerk-Auth-6C47FF?style=for-the-badge" alt="Clerk" /></a>
-  &nbsp;&nbsp;&nbsp;
-  <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-Protocol-10B981?style=for-the-badge" alt="MCP" /></a>
+  <a href="https://tambo.co"><img src="public/Tambo-Lockup.svg" height="44" alt="Tambo" /></a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://convex.dev"><img src="public/logos/convex.svg" height="36" alt="Convex" /></a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://clerk.com"><img src="public/logos/clerk.svg" height="32" alt="Clerk" /></a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://react.dev"><img src="public/logos/react.svg" height="32" alt="React" /></a>
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://nextjs.org"><img src="public/logos/nextjs.svg" height="32" alt="Next.js" /></a>
 </p>
 
 ---

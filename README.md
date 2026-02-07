@@ -21,6 +21,19 @@
 
 ---
 
+## Live Deployments
+
+| Service | URL | Stack |
+|---|---|---|
+| **Tambo API** | [tambo-api.aryankumar.dev](https://tambo-api.aryankumar.dev) | Self-hosted NestJS + PostgreSQL + Drizzle ORM |
+| **Tambo Dashboard** | [tambo.aryankumar.dev](https://tambo.aryankumar.dev) | Self-hosted Next.js admin panel |
+| **Convex** | Managed | Real-time DB + workflow engine |
+| **Clerk** | Managed | OAuth + GitHub App auth |
+
+I [forked Tambo's open-source backend](https://github.com/aryan877/tambo) and self-host it so I can run all 12 generative UI components and 9 tools at once. The hosted tier hits OpenAI's strict schema limits with that many tools, so I disabled `strictJsonSchema` and deployed my own instance with Docker Compose + Caddy.
+
+---
+
 ## The Problem
 
 Code reviews on GitHub are blind. Reviewers see a diff but have zero context about the rest of the codebase — how functions are called elsewhere, what patterns exist, whether a change breaks a convention. They review in isolation.
@@ -54,27 +67,36 @@ All posted back to GitHub as a proper PR review with inline comments.
 ## Architecture
 
 ```
-                    ┌──────────────────────────────────┐
-                    │         GitHub (Octokit)          │
-                    │   PRs · Files · Webhooks · Tree   │
-                    └────────────┬─────────────────────┘
-                                 │
-              ┌──────────────────▼──────────────────┐
-              │            Convex Backend            │
-              │                                      │
-              │  Tree-sitter WASM → AST Chunks       │
-              │  OpenAI Embeddings → 1536-dim Vec    │
-              │  DeepSeek V3.2 → AI Code Reviews     │
-              │  Workflow Engine → Index + Review     │
-              └──────────────────┬──────────────────┘
-                                 │ real-time sync
-              ┌──────────────────▼──────────────────┐
-              │          Next.js Frontend             │
-              │                                      │
-              │  Tambo Generative UI                  │
-              │  Monaco · XTerm · XYFlow · Recharts   │
-              │  Per-user MCP (Supabase, custom)      │
-              └──────────────────────────────────────┘
+       ┌──────────────────────────────────┐
+       │         GitHub (Octokit)          │
+       │   PRs · Files · Webhooks · Tree   │
+       └────────────┬─────────────────────┘
+                    │
+ ┌──────────────────▼──────────────────┐
+ │            Convex Backend            │
+ │                                      │
+ │  Tree-sitter WASM → AST Chunks       │
+ │  OpenAI Embeddings → 1536-dim Vec    │
+ │  DeepSeek V3.2 → AI Code Reviews     │
+ │  Workflow Engine → Index + Review     │
+ └──────────────────┬──────────────────┘
+                    │ real-time sync
+ ┌──────────────────▼──────────────────┐
+ │          Next.js Frontend             │
+ │                                      │
+ │  12 Generative UI Components          │
+ │  9 GitHub Tools · Per-user MCP        │
+ │  Monaco · XTerm · XYFlow · Recharts   │
+ └──────────┬───────────────┬──────────┘
+            │               │
+            ▼               ▼
+ ┌──────────────────┐ ┌────────────────────────┐
+ │  MCP Servers      │ │  Tambo API (self-host)  │
+ │  Supabase, etc.   │ │  tambo-api.aryankumar   │
+ │  HTTP · per-user  │ │  .dev                   │
+ └──────────────────┘ │  NestJS + Postgres       │
+                      │  Caddy auto-TLS          │
+                      └────────────────────────┘
 ```
 
 ---
@@ -156,7 +178,7 @@ PR opened → webhook → fetch diff → vector search for context
 | Layer | Technology |
 |---|---|
 | **Framework** | Next.js 15, React 19, TailwindCSS v4 |
-| **AI Orchestration** | Tambo Generative UI SDK |
+| **AI Orchestration** | Tambo Generative UI SDK ([self-hosted backend](https://tambo-api.aryankumar.dev)) |
 | **Backend** | Convex (real-time DB + workflow engine) |
 | **Auth** | Clerk (OAuth + GitHub App) |
 | **Code Parsing** | Tree-sitter WASM (11 language grammars) |

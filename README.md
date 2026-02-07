@@ -204,6 +204,8 @@ npx convex dev --once   # deploy backend
 npm run dev             # start app
 ```
 
+Then paste the system prompt from [`src/lib/constants.ts`](src/lib/constants.ts) into **Tambo Dashboard > Settings > Custom Instructions**. This is the single source of truth for the AI agent's behavior.
+
 ---
 
 <details>

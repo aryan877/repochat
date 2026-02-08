@@ -25,6 +25,7 @@
 
 | Service | URL | Stack |
 |---|---|---|
+| **RepoChat** | [repochat.aryankumar.dev](https://repochat.aryankumar.dev) | Vercel + Next.js 15 |
 | **Tambo API** | [tambo-api.aryankumar.dev](https://tambo-api.aryankumar.dev) | Self-hosted NestJS + PostgreSQL + Drizzle ORM |
 | **Tambo Dashboard** | [tambo.aryankumar.dev](https://tambo.aryankumar.dev) | Self-hosted Next.js admin panel |
 | **Convex** | Managed | Real-time DB + workflow engine |

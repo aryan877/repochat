@@ -507,10 +507,9 @@ const MessageInputInternal = React.forwardRef<
 
       const imageIdsAtSubmitTime = images.map((image) => image.id);
 
-      // Clear display immediately so user sees empty input while streaming
+      storeValueInSessionStorage(thread.id);
       suppressSyncRef.current = true;
       setDisplayValue("");
-      storeValueInSessionStorage(thread.id);
 
       try {
         await submit({

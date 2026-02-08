@@ -1,6 +1,10 @@
 "use client";
 
-import { WebContainer, type FileSystemTree } from "@webcontainer/api";
+import {
+  WebContainer,
+  type WebContainerProcess,
+  type FileSystemTree,
+} from "@webcontainer/api";
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { ContainerStatus } from "@/types/webcontainer";
 
@@ -16,17 +20,14 @@ interface FileNode {
 interface UseWebContainerOptions {
   files: FileNode[] | null;
   enabled: boolean;
-  installCommand?: string;
-  devCommand?: string;
 }
 
 interface UseWebContainerReturn {
   status: ContainerStatus;
   previewUrl: string | null;
-  terminalOutput: string;
   error: string | null;
+  startShell: (cols: number, rows: number) => Promise<WebContainerProcess>;
   restart: () => void;
-  writeToProcess: (data: string) => void;
 }
 
 // Singleton WebContainer instance
@@ -78,19 +79,15 @@ function buildFileSystemTree(nodes: FileNode[]): FileSystemTree {
 export function useWebContainer({
   files,
   enabled,
-  installCommand = "npm install",
-  devCommand = "npm run dev",
 }: UseWebContainerOptions): UseWebContainerReturn {
   const [status, setStatus] = useState<ContainerStatus>("idle");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [terminalOutput, setTerminalOutput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [restartKey, setRestartKey] = useState(0);
 
   const containerRef = useRef<WebContainer | null>(null);
   const hasStartedRef = useRef(false);
   const mountedRef = useRef(true);
-  const processWriterRef = useRef<WritableStreamDefaultWriter<string> | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -99,6 +96,7 @@ export function useWebContainer({
     };
   }, []);
 
+  // Boot and mount files — no auto-install or auto-dev-server
   useEffect(() => {
     if (!enabled || !files || files.length === 0 || hasStartedRef.current) {
       return;
@@ -108,125 +106,80 @@ export function useWebContainer({
 
     const start = async () => {
       try {
-        // Boot
         setStatus("booting");
-        setTerminalOutput("Booting WebContainer...\n");
         const container = await getWebContainer();
         containerRef.current = container;
 
         if (!mountedRef.current) return;
 
-        // Mount files
         setStatus("mounting");
-        setTerminalOutput((prev) => prev + "Mounting files...\n");
         const fileTree = buildFileSystemTree(files);
         await container.mount(fileTree);
 
         if (!mountedRef.current) return;
 
-        // Listen for server-ready
+        // Listen for server-ready (fires when user runs a dev server)
         container.on("server-ready", (_port, url) => {
           if (mountedRef.current) {
             setPreviewUrl(url);
-            setStatus("running");
-            setTerminalOutput((prev) => prev + `\n✓ Server ready at ${url}\n`);
           }
         });
 
-        // Install dependencies
-        setStatus("installing");
-        setTerminalOutput((prev) => prev + `\n$ ${installCommand}\n`);
-
-        const [installCmd, ...installArgs] = installCommand.split(" ");
-        const installProcess = await container.spawn(installCmd, installArgs);
-
-        installProcess.output.pipeTo(
-          new WritableStream({
-            write(data) {
-              if (mountedRef.current) {
-                setTerminalOutput((prev) => prev + data);
-              }
-            },
-          })
-        );
-
-        const installExitCode = await installProcess.exit;
-
-        if (!mountedRef.current) return;
-
-        if (installExitCode !== 0) {
-          throw new Error(`Install failed with exit code ${installExitCode}`);
-        }
-
-        // Start dev server
-        setStatus("starting");
-        setTerminalOutput((prev) => prev + `\n$ ${devCommand}\n`);
-
-        const [devCmd, ...devArgs] = devCommand.split(" ");
-        const devProcess = await container.spawn(devCmd, devArgs);
-
-        // Store the process input writer so user keystrokes can be forwarded
-        const writer = devProcess.input.getWriter();
-        processWriterRef.current = writer;
-
-        devProcess.output.pipeTo(
-          new WritableStream({
-            write(data) {
-              if (mountedRef.current) {
-                setTerminalOutput((prev) => prev + data);
-              }
-            },
-          })
-        );
+        setStatus("ready");
       } catch (err) {
         if (mountedRef.current) {
           const message = err instanceof Error ? err.message : "Unknown error";
           setError(message);
           setStatus("error");
-          setTerminalOutput((prev) => prev + `\n✗ Error: ${message}\n`);
         }
       }
     };
 
     start();
-  }, [enabled, files, restartKey, installCommand, devCommand]);
+  }, [enabled, files, restartKey]);
 
   // Reset when disabled
   useEffect(() => {
     if (!enabled) {
       hasStartedRef.current = false;
-      processWriterRef.current = null;
       setStatus("idle");
       setPreviewUrl(null);
       setError(null);
-      setTerminalOutput("");
     }
   }, [enabled]);
+
+  // Spawn an interactive jsh shell connected to the terminal
+  const startShell = useCallback(
+    async (cols: number, rows: number): Promise<WebContainerProcess> => {
+      const container = containerRef.current;
+      if (!container) {
+        throw new Error("Container not ready");
+      }
+
+      const shellProcess = await container.spawn("jsh", [], {
+        terminal: { cols, rows },
+      });
+
+      return shellProcess;
+    },
+    []
+  );
 
   const restart = useCallback(() => {
     teardownWebContainer();
     containerRef.current = null;
     hasStartedRef.current = false;
-    processWriterRef.current = null;
     setStatus("idle");
     setPreviewUrl(null);
     setError(null);
-    setTerminalOutput("");
     setRestartKey((k) => k + 1);
-  }, []);
-
-  const writeToProcess = useCallback((data: string) => {
-    processWriterRef.current?.write(data).catch(() => {
-      // writer closed – ignore
-    });
   }, []);
 
   return {
     status,
     previewUrl,
-    terminalOutput,
     error,
+    startShell,
     restart,
-    writeToProcess,
   };
 }

@@ -69,6 +69,15 @@ const DownloadIcon = () => (
   </svg>
 );
 
+const GitBranchIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="6" x2="6" y1="3" y2="15" />
+    <circle cx="18" cy="6" r="3" />
+    <circle cx="6" cy="18" r="3" />
+    <path d="M18 9a9 9 0 0 1-9 9" />
+  </svg>
+);
+
 const FolderIcon = () => (
   <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mx-auto block text-muted-foreground/40">
     <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
@@ -80,9 +89,7 @@ const StatusIndicator = ({ status }: { status: ContainerStatus }) => {
     idle: { color: "bg-zinc-500", text: "Idle" },
     booting: { color: "bg-amber-500 animate-pulse", text: "Booting" },
     mounting: { color: "bg-amber-500 animate-pulse", text: "Mounting" },
-    installing: { color: "bg-blue-500 animate-pulse", text: "Installing" },
-    starting: { color: "bg-blue-500 animate-pulse", text: "Starting" },
-    running: { color: "bg-emerald-500", text: "Running" },
+    ready: { color: "bg-emerald-500", text: "Ready" },
     error: { color: "bg-red-500", text: "Error" },
   };
 
@@ -176,6 +183,12 @@ export function CodeView({ repoId, repoName }: CodeViewProps) {
   const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
   const [isImporting, setIsImporting] = useState(false);
 
+  // Fetch repo data (for defaultBranch)
+  const repoData = useQuery(
+    api.repos.getRepo,
+    repoId ? { repoId } : "skip"
+  );
+
   // Fetch files from Convex
   const repoFiles = useQuery(
     api.files.getRepoFiles,
@@ -204,12 +217,10 @@ export function CodeView({ repoId, repoName }: CodeViewProps) {
     );
   }, [repoFiles]);
 
-  // WebContainer hook
-  const { status, previewUrl, terminalOutput, error, restart, writeToProcess } = useWebContainer({
+  // WebContainer hook — boots when user clicks Start
+  const { status, previewUrl, error, startShell, restart } = useWebContainer({
     files: isRunning && files.length > 0 ? convertToHookFormat(files) : null,
     enabled: isRunning && files.length > 0,
-    installCommand: "npm install",
-    devCommand: "npm run dev",
   });
 
   // Auto-select first file when files change
@@ -236,6 +247,12 @@ export function CodeView({ repoId, repoName }: CodeViewProps) {
     setIsRunning(false);
   }, [repoId]);
 
+  const handleStart = () => setIsRunning(true);
+  const handleStop = () => {
+    setIsRunning(false);
+    restart();
+  };
+
   const handleImport = async () => {
     if (!repoId || !user?.id) return;
     setIsImporting(true);
@@ -246,12 +263,6 @@ export function CodeView({ repoId, repoName }: CodeViewProps) {
     } finally {
       setIsImporting(false);
     }
-  };
-
-  const handleStart = () => setIsRunning(true);
-  const handleStop = () => {
-    setIsRunning(false);
-    restart();
   };
 
   const getLanguage = (filename: string) => {
@@ -295,7 +306,7 @@ export function CodeView({ repoId, repoName }: CodeViewProps) {
   const needsImport = !repoFiles || repoFiles.length === 0;
   const currentlyImporting = importStatus?.status === "importing" || isImporting;
 
-  if (needsImport || currentlyImporting) {
+  if (needsImport) {
     return (
       <div className="flex-1 flex items-center justify-center bg-background">
         <div className="text-center max-w-md px-6">
@@ -372,6 +383,30 @@ export function CodeView({ repoId, repoName }: CodeViewProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          {repoData?.defaultBranch && (
+            <span className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground bg-muted/40 rounded-md">
+              <GitBranchIcon />
+              {repoData.defaultBranch}
+            </span>
+          )}
+
+          <button
+            onClick={handleImport}
+            disabled={isImporting || currentlyImporting}
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground rounded-md hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+            title="Re-import files from GitHub"
+          >
+            {isImporting || currentlyImporting ? (
+              <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.2" />
+                <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            ) : (
+              <DownloadIcon />
+            )}
+            Re-import
+          </button>
+
           {previewUrl && (
             <a
               href={previewUrl}
@@ -460,6 +495,7 @@ export function CodeView({ repoId, repoName }: CodeViewProps) {
                                   renderLineHighlight: "none",
                                   overviewRulerBorder: false,
                                   hideCursorInOverviewRuler: true,
+                                  automaticLayout: true,
                                   scrollbar: {
                                     vertical: "auto",
                                     horizontal: "auto",
@@ -502,15 +538,9 @@ export function CodeView({ repoId, repoName }: CodeViewProps) {
                                 <div className="text-xs">{error}</div>
                               </div>
                             ) : isRunning ? (
-                              <div className="flex items-center gap-2">
-                                <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.2" />
-                                  <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                                </svg>
-                                <span>Starting server...</span>
-                              </div>
+                              "Run a dev server in the terminal to preview"
                             ) : (
-                              "Click Run to start"
+                              "Click Start to boot the container"
                             )}
                           </div>
                         )}
@@ -531,7 +561,7 @@ export function CodeView({ repoId, repoName }: CodeViewProps) {
                         </div>
                       }
                     >
-                      <TerminalPanel output={terminalOutput} onData={writeToProcess} />
+                      <TerminalPanel status={status} startShell={startShell} />
                     </Suspense>
                   </div>
                 </Allotment.Pane>

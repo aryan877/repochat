@@ -1,21 +1,25 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import type { WebContainerProcess } from "@webcontainer/api";
+import type { ContainerStatus } from "@/types/webcontainer";
 import "@xterm/xterm/css/xterm.css";
 
 interface TerminalPanelProps {
-  output: string;
-  onData?: (data: string) => void;
+  status: ContainerStatus;
+  startShell: (cols: number, rows: number) => Promise<WebContainerProcess>;
 }
 
-export function TerminalPanel({ output, onData }: TerminalPanelProps) {
+export function TerminalPanel({ status, startShell }: TerminalPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const lastLengthRef = useRef(0);
+  const shellRef = useRef<WebContainerProcess | null>(null);
+  const connectedRef = useRef(false);
 
+  // Create xterm instance on mount
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -23,7 +27,8 @@ export function TerminalPanel({ output, onData }: TerminalPanelProps) {
       convertEol: true,
       disableStdin: false,
       fontSize: 13,
-      fontFamily: "'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Monaco, 'Courier New', monospace",
+      fontFamily:
+        "'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Monaco, 'Courier New', monospace",
       lineHeight: 1.4,
       cursorBlink: true,
       theme: {
@@ -60,45 +65,83 @@ export function TerminalPanel({ output, onData }: TerminalPanelProps) {
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
 
-    // Resize observer
+    // Resize observer — fit xterm and resize the shell process
     const resizeObserver = new ResizeObserver(() => {
       fitAddon.fit();
+      if (shellRef.current) {
+        shellRef.current.resize({ cols: terminal.cols, rows: terminal.rows });
+      }
     });
     resizeObserver.observe(containerRef.current);
 
     return () => {
       resizeObserver.disconnect();
+      connectedRef.current = false;
+      shellRef.current?.kill();
+      shellRef.current = null;
       terminal.dispose();
     };
   }, []);
 
-  // Wire onData callback for user input
-  useEffect(() => {
+  // Connect shell when container is ready
+  const connectShell = useCallback(async () => {
     const terminal = terminalRef.current;
-    if (!terminal || !onData) return;
+    if (!terminal || connectedRef.current) return;
 
-    const disposable = terminal.onData(onData);
-    return () => disposable.dispose();
-  }, [onData]);
+    connectedRef.current = true;
 
-  // Write output incrementally
+    try {
+      const shell = await startShell(terminal.cols, terminal.rows);
+      shellRef.current = shell;
+
+      // Pipe shell output → xterm (catch abort when container tears down)
+      shell.output.pipeTo(
+        new WritableStream({
+          write(data) {
+            terminal.write(data);
+          },
+        })
+      ).catch(() => {
+        // Stream closed — container was torn down
+      });
+
+      // Pipe xterm input → shell stdin
+      const writer = shell.input.getWriter();
+      const disposable = terminal.onData((data) => {
+        writer.write(data).catch(() => {
+          // Writer closed — shell was killed
+        });
+      });
+
+      // If shell exits, allow reconnection
+      shell.exit.then(() => {
+        disposable.dispose();
+        connectedRef.current = false;
+        shellRef.current = null;
+      });
+    } catch {
+      connectedRef.current = false;
+      terminal.writeln("\r\n\x1b[31mFailed to start shell.\x1b[0m");
+    }
+  }, [startShell]);
+
+  // Reset connection state when container stops so shell can reconnect on next Run
   useEffect(() => {
-    const terminal = terminalRef.current;
-    if (!terminal) return;
-
-    // If output was cleared, clear terminal
-    if (output.length < lastLengthRef.current) {
-      terminal.clear();
-      lastLengthRef.current = 0;
+    if (status !== "ready") {
+      shellRef.current?.kill();
+      shellRef.current = null;
+      connectedRef.current = false;
     }
+  }, [status]);
 
-    // Write new content
-    const newData = output.slice(lastLengthRef.current);
-    if (newData) {
-      terminal.write(newData);
-      lastLengthRef.current = output.length;
+  // Connect shell when container is ready
+  useEffect(() => {
+    if (status === "ready") {
+      // Clear previous terminal content for a fresh session
+      terminalRef.current?.clear();
+      connectShell();
     }
-  }, [output]);
+  }, [status, connectShell]);
 
   return (
     <div

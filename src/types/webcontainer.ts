@@ -29,14 +29,12 @@ export interface FileNode {
 // WebContainer Status
 // =============================================================================
 
-/** WebContainer lifecycle: idle → booting → mounting → installing → starting → running | error */
+/** WebContainer lifecycle: idle → booting → mounting → ready | error */
 export type ContainerStatus =
   | "idle"
   | "booting"
   | "mounting"
-  | "installing"
-  | "starting"
-  | "running"
+  | "ready"
   | "error";
 
 // =============================================================================

@@ -93,16 +93,16 @@ function FileNode({ data }: NodeProps<Node<FileNodeData>>) {
         {hasChanges && (
           <div className="mt-1.5 flex items-center gap-2 text-[10px]">
             {data.additions != null && data.additions > 0 && (
-              <span className="text-[#4ade80]">+{data.additions}</span>
+              <span className="text-emerald-400">+{data.additions}</span>
             )}
             {data.deletions != null && data.deletions > 0 && (
-              <span className="text-[#f87171]">-{data.deletions}</span>
+              <span className="text-red-400">-{data.deletions}</span>
             )}
           </div>
         )}
 
         {data.issues != null && data.issues > 0 && (
-          <div className="mt-1 text-[10px] text-[#f87171]">
+          <div className="mt-1 text-[10px] text-red-400">
             {data.issues} {data.issues === 1 ? "issue" : "issues"}
           </div>
         )}
@@ -133,7 +133,6 @@ export function CodeFlow({
   const { nodes, edges } = useMemo(() => {
     if (files.length === 0) return { nodes: [], edges: [] };
 
-    // Layout: grid arrangement
     const cols = Math.ceil(Math.sqrt(files.length));
     const cellWidth = 220;
     const cellHeight = 120;
@@ -164,15 +163,13 @@ export function CodeFlow({
     return { nodes, edges };
   }, [files, dependencies]);
 
-  const onInit = useCallback(() => {
-    // Fit view on init
-  }, []);
+  const onInit = useCallback(() => {}, []);
 
   if (streamStatus?.isStreaming && files.length === 0) {
     return (
-      <div className="py-4">
-        <div className="h-4 w-48 bg-[#1f1f1f] rounded animate-pulse mb-4" />
-        <div className="h-64 bg-[#1f1f1f] rounded animate-pulse" />
+      <div className="rounded-xl bg-[#111111] p-5 animate-pulse my-3">
+        <div className="h-4 w-48 bg-[#1a1a1a] rounded mb-4" />
+        <div className="h-64 bg-[#1a1a1a] rounded" />
       </div>
     );
   }
@@ -180,10 +177,19 @@ export function CodeFlow({
   if (files.length === 0) return null;
 
   return (
-    <div className="py-4">
-      <h3 className="text-sm font-medium text-[#fafafa] mb-3">{title}</h3>
+    <div className="rounded-xl bg-[#111111] overflow-hidden my-3">
+      {/* Tool label */}
+      <div className="px-5 py-2">
+        <span className="text-[10px] font-mono text-[#444] uppercase tracking-widest">CodeFlow</span>
+      </div>
+
+      {/* Header */}
+      <div className="px-5 py-3">
+        <h3 className="text-[14px] font-semibold text-[#e5e5e5]">{title}</h3>
+      </div>
+
+      {/* Graph */}
       <div
-        className="rounded-lg border border-[#1f1f1f] overflow-hidden"
         style={{ height: Math.min(400, Math.max(200, Math.ceil(files.length / 3) * 120 + 100)) }}
       >
         <ReactFlow
@@ -197,13 +203,13 @@ export function CodeFlow({
           minZoom={0.3}
           maxZoom={1.5}
         >
-          <Background color="#1f1f1f" gap={20} />
+          <Background color="#1e1e1e" gap={20} />
           <Controls
-            className="!bg-[#0a0a0a] !border-[#1f1f1f] !rounded-lg [&>button]:!bg-[#0a0a0a] [&>button]:!border-[#1f1f1f] [&>button]:!text-[#a3a3a3] [&>button:hover]:!bg-[#1f1f1f]"
+            className="!bg-[#111111] !border-[#1e1e1e] !rounded-lg [&>button]:!bg-[#111111] [&>button]:!border-[#1e1e1e] [&>button]:!text-[#999] [&>button:hover]:!bg-[#1a1a1a]"
             showInteractive={false}
           />
           <MiniMap
-            className="!bg-[#0a0a0a] !border-[#1f1f1f] !rounded"
+            className="!bg-[#111111] !border-[#1e1e1e] !rounded"
             nodeColor={(node) => {
               const severity = (node.data as FileNodeData)?.severity || "none";
               return severityColors[severity]?.border || "#262626";
@@ -213,7 +219,8 @@ export function CodeFlow({
         </ReactFlow>
       </div>
 
-      <div className="mt-3 flex items-center gap-4 text-[10px] text-[#525252]">
+      {/* Legend */}
+      <div className="px-5 py-3 flex items-center gap-4 text-[10px] text-[#555]">
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded border border-[#dc2626] bg-[#450a0a]" />
           <span>Critical</span>

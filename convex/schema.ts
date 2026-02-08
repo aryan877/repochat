@@ -152,6 +152,7 @@ export default defineSchema({
     summaryCommentId: v.optional(v.number()),
     reviewId: v.optional(v.number()),
     githubReviewId: v.optional(v.number()),
+    workflowId: v.optional(v.string()),
     feedbackScore: v.optional(v.number()),
     triggeredAt: v.number(),
     completedAt: v.optional(v.number()),

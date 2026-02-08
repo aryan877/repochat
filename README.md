@@ -84,8 +84,8 @@ All posted back to GitHub as a proper PR review with inline comments.
  ┌──────────────────▼──────────────────┐
  │          Next.js Frontend             │
  │                                      │
- │  12 Generative UI Components          │
- │  9 GitHub Tools · Per-user MCP        │
+ │  Generative UI Components             │
+ │  GitHub Tools · Per-user MCP          │
  │  Monaco · XTerm · XYFlow · Recharts   │
  └──────────┬───────────────┬──────────┘
             │               │
@@ -303,8 +303,8 @@ The browser connects directly to the MCP server over HTTP. No backend proxy. Whe
 | `useTamboVoice` | Voice dictation button |
 | `useTamboElicitationContext` | AI can ask the user questions mid-conversation |
 | `useTamboMcpPrompt` / `PromptList` / `ResourceList` | MCP prompt and resource discovery |
-| `TamboTool` | 9 GitHub tools with Zod input/output schemas |
-| `TamboComponent` | 12 generative components + 1 interactable |
+| `TamboTool` | GitHub tools with Zod input/output schemas |
+| `TamboComponent` | Generative components + interactable ReviewChecklist |
 
 ---
 
@@ -316,7 +316,7 @@ The browser connects directly to the MCP server over HTTP. No backend proxy. Whe
 | **AI Orchestration** | Tambo Generative UI SDK ([self-hosted backend](https://tambo-api.aryankumar.dev)) |
 | **Backend** | Convex (real-time DB + workflow engine) |
 | **Auth** | Clerk (OAuth + GitHub App) |
-| **Code Parsing** | Tree-sitter WASM (11 language grammars) |
+| **Code Parsing** | Tree-sitter WASM (multi-language grammars) |
 | **Embeddings** | OpenAI `text-embedding-3-small` (1536-dim) |
 | **Code Review AI** | DeepSeek V3.2 via OpenRouter |
 | **GitHub** | Octokit + GitHub App + webhooks |
@@ -412,7 +412,7 @@ Convex uses **esbuild** to bundle your backend code. Packages listed in `externa
 
 3. **Local query files:** Tree-sitter's `tags.scm` query files enable smart extraction (find all function/class/method definitions). These ship inside individual language packages (`tree-sitter-javascript`, etc.), but those packages have conflicting peer dependencies that break `npm install` on Convex's server. Solution: copied the 10 query files into `convex/queries/` and load them with `fs.readFileSync` at runtime.
 
-**Result:** Full AST-based code intelligence across 11 languages running on Convex's serverless runtime, with query-based definition extraction instead of naive regex or line-based chunking.
+**Result:** Full AST-based code intelligence across multiple languages running on Convex's serverless runtime, with query-based definition extraction instead of naive regex or line-based chunking.
 
 </details>
 
@@ -467,7 +467,7 @@ repochat/
 │   ├── webhooks.ts          # GitHub webhook handlers
 │   ├── mcpServers.ts        # Per-user MCP CRUD
 │   ├── workflowManager.ts   # Async workflow orchestration
-│   └── queries/             # Tree-sitter tags.scm files (10 languages)
+│   └── queries/             # Tree-sitter tags.scm files
 │       ├── javascript.scm   #   Bundled locally to avoid peer dep conflicts
 │       ├── typescript.scm   #   with individual tree-sitter-* packages
 │       └── ...

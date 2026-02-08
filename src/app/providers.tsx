@@ -78,6 +78,8 @@ function TamboProviderWithAuth({ children }: { children: ReactNode }) {
   const searchCode = useAction(api.github.searchCode);
   const listPullRequests = useAction(api.github.listPullRequests);
   const listBranches = useAction(api.github.listBranches);
+  const listCommits = useAction(api.github.listCommits);
+  const compareCommits = useAction(api.github.compareCommits);
 
   const tools = useMemo(() => {
     if (!clerkId || !githubStatus?.connected) {
@@ -97,6 +99,8 @@ function TamboProviderWithAuth({ children }: { children: ReactNode }) {
         searchCode,
         listPullRequests,
         listBranches,
+        listCommits,
+        compareCommits,
       },
     });
   }, [
@@ -112,6 +116,8 @@ function TamboProviderWithAuth({ children }: { children: ReactNode }) {
     searchCode,
     listPullRequests,
     listBranches,
+    listCommits,
+    compareCommits,
   ]);
 
   // Wait for the Clerk token before mounting TamboProvider.

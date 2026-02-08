@@ -51,6 +51,7 @@ export const updateReview = internalMutation({
         v.literal("failed")
       )
     ),
+    workflowId: v.optional(v.string()),
     summary: v.optional(v.string()),
     findings: v.optional(
       v.array(

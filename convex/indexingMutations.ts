@@ -33,6 +33,7 @@ export const updateIndexingJob = internalMutation({
         v.literal("failed")
       )
     ),
+    workflowId: v.optional(v.string()),
     totalFiles: v.optional(v.number()),
     processedFiles: v.optional(v.number()),
     totalChunks: v.optional(v.number()),

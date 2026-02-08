@@ -59,9 +59,9 @@ export function PRStatsChart({
 
   if (streamStatus?.isStreaming && files.length === 0) {
     return (
-      <div className="py-4">
-        <div className="h-4 w-48 bg-[#1f1f1f] rounded animate-pulse mb-4" />
-        <div className="h-48 bg-[#1f1f1f] rounded animate-pulse" />
+      <div className="rounded-xl bg-[#111111] p-5 animate-pulse my-3">
+        <div className="h-4 w-48 bg-[#1a1a1a] rounded mb-4" />
+        <div className="h-48 bg-[#1a1a1a] rounded" />
       </div>
     );
   }
@@ -78,16 +78,23 @@ export function PRStatsChart({
   }));
 
   return (
-    <div className="py-4">
-      <div className="flex items-baseline justify-between mb-3">
-        <h3 className="text-sm font-medium text-[#fafafa]">{title}</h3>
+    <div className="rounded-xl bg-[#111111] overflow-hidden my-3">
+      {/* Tool label */}
+      <div className="px-5 py-2">
+        <span className="text-[10px] font-mono text-[#444] uppercase tracking-widest">PRStatsChart</span>
+      </div>
+
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3">
+        <h3 className="text-[14px] font-semibold text-[#e5e5e5]">{title}</h3>
         <div className="flex gap-4 text-xs">
-          <span className="text-[#4ade80]">+{totalAdditions}</span>
-          <span className="text-[#f87171]">-{totalDeletions}</span>
+          <span className="font-semibold text-emerald-400">+{totalAdditions}</span>
+          <span className="font-semibold text-red-400">-{totalDeletions}</span>
         </div>
       </div>
 
-      <div className="bg-[#0a0a0a] rounded-lg p-4 border border-[#1f1f1f]">
+      {/* Chart */}
+      <div className="p-5">
         {chartType === "bar" ? (
           <ResponsiveContainer width="100%" height={Math.max(180, files.length * 32)}>
             <BarChart
@@ -95,27 +102,27 @@ export function PRStatsChart({
               layout="vertical"
               margin={{ top: 0, right: 12, left: 0, bottom: 0 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="#1f1f1f" horizontal={false} />
-              <XAxis type="number" tick={{ fill: "#525252", fontSize: 11 }} axisLine={false} tickLine={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e1e1e" horizontal={false} />
+              <XAxis type="number" tick={{ fill: "#555", fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis
                 type="category"
                 dataKey="name"
-                tick={{ fill: "#a3a3a3", fontSize: 11 }}
+                tick={{ fill: "#999", fontSize: 11 }}
                 width={140}
                 axisLine={false}
                 tickLine={false}
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: "#141414",
-                  border: "1px solid #1f1f1f",
-                  borderRadius: "6px",
+                  backgroundColor: "#111111",
+                  border: "1px solid #1e1e1e",
+                  borderRadius: "8px",
                   fontSize: "12px",
-                  color: "#a3a3a3",
+                  color: "#999",
                 }}
               />
-              <Bar dataKey="additions" fill="#4ade80" radius={[0, 2, 2, 0]} barSize={14} />
-              <Bar dataKey="deletions" fill="#f87171" radius={[0, 2, 2, 0]} barSize={14} />
+              <Bar dataKey="additions" fill="#10b981" radius={[0, 2, 2, 0]} barSize={14} />
+              <Bar dataKey="deletions" fill="#ef4444" radius={[0, 2, 2, 0]} barSize={14} />
             </BarChart>
           </ResponsiveContainer>
         ) : (
@@ -136,11 +143,11 @@ export function PRStatsChart({
               </Pie>
               <Tooltip
                 contentStyle={{
-                  backgroundColor: "#141414",
-                  border: "1px solid #1f1f1f",
-                  borderRadius: "6px",
+                  backgroundColor: "#111111",
+                  border: "1px solid #1e1e1e",
+                  borderRadius: "8px",
                   fontSize: "12px",
-                  color: "#a3a3a3",
+                  color: "#999",
                 }}
               />
             </PieChart>
@@ -148,10 +155,11 @@ export function PRStatsChart({
         )}
       </div>
 
+      {/* Pie legend */}
       {chartType === "pie" && files.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
+        <div className="px-5 pb-4 flex flex-wrap gap-x-4 gap-y-1">
           {files.map((f, i) => (
-            <div key={f.filename} className="flex items-center gap-1.5 text-xs text-[#a3a3a3]">
+            <div key={f.filename} className="flex items-center gap-1.5 text-xs text-[#999]">
               <span
                 className="w-2 h-2 rounded-full flex-shrink-0"
                 style={{ backgroundColor: COLORS[i % COLORS.length] }}

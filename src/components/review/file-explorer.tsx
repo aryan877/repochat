@@ -30,6 +30,8 @@ export interface FileExplorerProps {
   onFileSelect?: (path: string) => void;
 }
 
+import { FolderIcon, FileDocIcon, GitBranchIcon } from "./icons";
+
 function FileNodeComponent({
   node,
   depth = 0,
@@ -56,21 +58,19 @@ function FileNodeComponent({
     <div>
       <button
         onClick={handleClick}
-        className={`w-full flex items-center gap-2 px-2 py-1.5 text-left transition-colors text-sm ${
+        className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left transition-colors ${
           isSelected
-            ? "bg-[#1f1f1f] text-[#fafafa]"
-            : "text-[#a3a3a3] hover:bg-[#141414] hover:text-[#fafafa]"
+            ? "bg-[#1a1a1a] text-[#e5e5e5]"
+            : "text-[#999] hover:bg-[#161616] hover:text-[#e5e5e5]"
         }`}
-        style={{ paddingLeft: `${depth * 16 + 8}px` }}
+        style={{ paddingLeft: `${depth * 16 + 12}px` }}
       >
-        {node.type === "directory" && (
-          <span className="text-[#525252] w-4">{isOpen ? "▼" : "▶"}</span>
+        {node.type === "directory" ? (
+          <FolderIcon open={isOpen} />
+        ) : (
+          <FileDocIcon />
         )}
-        {node.type === "file" && <span className="w-4" />}
-
-        <span className="flex-1 truncate">
-          {node.name}
-        </span>
+        <span className="text-[13px] font-mono truncate">{node.name}</span>
       </button>
 
       {node.type === "directory" && isOpen && node.children && (
@@ -105,13 +105,23 @@ export function FileExplorer({
   };
 
   return (
-    <div className="my-3">
-      <div className="flex items-center justify-between py-2 border-b border-[#1f1f1f]">
-        <span className="text-sm text-[#fafafa]">{repoName}</span>
-        <span className="text-xs text-[#525252] font-mono">{branch}</span>
+    <div className="rounded-xl bg-[#111111] overflow-hidden my-3">
+      {/* Tool label */}
+      <div className="px-4 py-2">
+        <span className="text-[10px] font-mono text-[#444] uppercase tracking-widest">FileExplorer</span>
       </div>
 
-      <div className="py-2 max-h-[400px] overflow-y-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2.5">
+        <span className="text-[13px] font-medium text-[#e5e5e5]">{repoName}</span>
+        <div className="flex items-center gap-1.5 text-[#666]">
+          <GitBranchIcon />
+          <span className="text-[11px] font-mono">{branch}</span>
+        </div>
+      </div>
+
+      {/* Tree */}
+      <div className="py-1 max-h-[400px] overflow-y-auto">
         {tree.length > 0 ? (
           tree.map((node) => (
             <FileNodeComponent
@@ -122,14 +132,15 @@ export function FileExplorer({
             />
           ))
         ) : (
-          <div className="text-center py-8 text-[#525252] text-sm">
+          <div className="text-center py-8 text-[#555] text-[13px]">
             No files to display
           </div>
         )}
       </div>
 
+      {/* Selected file path */}
       {selected && (
-        <div className="py-2 border-t border-[#1f1f1f] text-xs text-[#525252] truncate">
+        <div className="px-4 py-2 text-[12px] font-mono text-[#666] truncate">
           {selected}
         </div>
       )}

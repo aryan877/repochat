@@ -33,15 +33,21 @@ const BookIcon = () => (
   </svg>
 );
 
-type Section = "overview" | "tools" | "components" | "flow";
+const ArchIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="2" width="20" height="8" rx="2" ry="2" /><rect x="2" y="14" width="20" height="8" rx="2" ry="2" /><line x1="6" y1="10" x2="6" y2="14" /><line x1="18" y1="10" x2="18" y2="14" />
+  </svg>
+);
+
+type Section = "overview" | "tools" | "components" | "flow" | "architecture";
 
 const tools = [
   {
     name: "analyzePR",
-    description: "Pulls down everything about a PR — metadata, branches, stats, and the full diff for every changed file. This is the starting point for any code review.",
+    description: "Pulls down everything about a PR — metadata, branches, stats, the full diff, and relevant codebase context from the indexed repository when available. This gives the AI real understanding of how the changes fit into the existing codebase.",
     when: "You ask to review a PR, check what changed, or analyze a pull request.",
     inputs: ["owner — Who owns the repo", "repo — Repo name", "prNumber — The PR number to analyze"],
-    outputs: ["PR metadata (title, author, state, branches)", "Stats (additions, deletions, file count)", "Full file list with patches"],
+    outputs: ["PR metadata (title, author, state, branches)", "Stats (additions, deletions, file count)", "Full file list with patches", "codebaseContext — Relevant indexed code (functions, classes, types) for deeper review"],
     rendersComponent: "PRSummary + DiffViewer",
   },
   {
@@ -86,10 +92,10 @@ const tools = [
   },
   {
     name: "searchCode",
-    description: "Searches the entire repo for code patterns using GitHub code search. Find function definitions, API routes, specific strings — anything in the source.",
-    when: "You want to find where something is used, defined, or referenced.",
-    inputs: ["owner, repo", "query — What to search for"],
-    outputs: ["totalCount — How many matches", "items[] — File name, path, and GitHub link for each hit"],
+    description: "Semantic search on the indexed codebase when available (vector search on AST chunks with embeddings), with automatic GitHub API fallback for non-indexed repos. Indexed results include code snippets, descriptions, line numbers, and relevance scores.",
+    when: "You want to find where something is used, defined, or referenced. Semantic search means you can ask 'authentication logic' and get relevant results even if the code doesn't contain that exact phrase.",
+    inputs: ["owner, repo", "query — What to search for (semantic when indexed, string match on GitHub)", "branch (optional) — Defaults to the indexed/default branch"],
+    outputs: ["source — 'indexed' or 'github' (tells you which backend was used)", "totalCount", "items[] — Name, path, URL, plus code snippets, docstrings, chunk type, and relevance score when indexed"],
     rendersComponent: "CodeViewer",
   },
   {
@@ -107,6 +113,22 @@ const tools = [
     inputs: ["owner, repo"],
     outputs: ["branches[] — Name and protected status"],
     rendersComponent: "Text list",
+  },
+  {
+    name: "listCommits",
+    description: "Shows recent commits on a branch — SHA, message, author, date, and a link. A quick way to see what landed recently or trace when something changed.",
+    when: "You ask about commit history, recent changes, or what's been pushed to a branch.",
+    inputs: ["owner, repo", "branch (optional) — Defaults to main", "perPage (optional) — How many commits to return (default 15)"],
+    outputs: ["commits[] — SHA, message, author, avatar, date, and GitHub link"],
+    rendersComponent: "CommitCard",
+  },
+  {
+    name: "compareCommits",
+    description: "Compares two branches, tags, or commits and shows exactly what changed between them — commits, files, and patches. Like git diff but through the API.",
+    when: "You want to see what changed between two branches, or what's been added since a specific commit or tag.",
+    inputs: ["owner, repo", "base — Branch, tag, or commit SHA to compare from", "head — Branch, tag, or commit SHA to compare to"],
+    outputs: ["status, aheadBy, behindBy, totalCommits", "commits[] — SHA, message, author, date", "files[] — Filename, status, additions, deletions, patch"],
+    rendersComponent: "DiffViewer + CommitCard",
   },
 ];
 
@@ -208,6 +230,7 @@ export default function DocsPage() {
     { id: "tools", label: "Tools", icon: <ToolIcon /> },
     { id: "components", label: "Components", icon: <ComponentIcon /> },
     { id: "flow", label: "How It Works", icon: <FlowIcon /> },
+    { id: "architecture", label: "Architecture", icon: <ArchIcon /> },
   ];
 
   return (
@@ -252,8 +275,6 @@ export default function DocsPage() {
 
           <div className="mt-auto pt-4 border-t border-secondary">
             <div className="px-3 py-2 text-xs text-muted-foreground/60">
-              <p>9 Tools</p>
-              <p>13 Components</p>
               <p>Built for Tambo Hackathon</p>
             </div>
           </div>
@@ -283,6 +304,7 @@ export default function DocsPage() {
           {activeSection === "tools" && <ToolsSection />}
           {activeSection === "components" && <ComponentsSection />}
           {activeSection === "flow" && <FlowSection />}
+          {activeSection === "architecture" && <ArchitectureSection />}
         </main>
       </div>
     </div>
@@ -307,7 +329,7 @@ function OverviewSection({ onNavigate }: { onNavigate: (s: Section) => void }) {
         <button onClick={() => onNavigate("tools")} className="group p-5 rounded-xl border border-secondary bg-card hover:border-muted-foreground/30 transition-all text-left">
           <div className="flex items-center gap-2 mb-2">
             <ToolIcon />
-            <h3 className="text-sm font-semibold text-foreground">9 GitHub Tools</h3>
+            <h3 className="text-sm font-semibold text-foreground">GitHub Tools</h3>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">
             The actions the AI can take on your behalf — fetching PRs, reading files, posting comments, approving, merging, and more.
@@ -320,7 +342,7 @@ function OverviewSection({ onNavigate }: { onNavigate: (s: Section) => void }) {
         <button onClick={() => onNavigate("components")} className="group p-5 rounded-xl border border-secondary bg-card hover:border-muted-foreground/30 transition-all text-left">
           <div className="flex items-center gap-2 mb-2">
             <ComponentIcon />
-            <h3 className="text-sm font-semibold text-foreground">13 Generative Components</h3>
+            <h3 className="text-sm font-semibold text-foreground">Generative Components</h3>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">
             The visual building blocks the AI picks from — each one is a React component the AI streams into the chat when the context is right.
@@ -330,7 +352,7 @@ function OverviewSection({ onNavigate }: { onNavigate: (s: Section) => void }) {
           </span>
         </button>
 
-        <button onClick={() => onNavigate("flow")} className="group p-5 rounded-xl border border-secondary bg-card hover:border-muted-foreground/30 transition-all text-left sm:col-span-2">
+        <button onClick={() => onNavigate("flow")} className="group p-5 rounded-xl border border-secondary bg-card hover:border-muted-foreground/30 transition-all text-left">
           <div className="flex items-center gap-2 mb-2">
             <FlowIcon />
             <h3 className="text-sm font-semibold text-foreground">How It Works</h3>
@@ -340,6 +362,19 @@ function OverviewSection({ onNavigate }: { onNavigate: (s: Section) => void }) {
           </p>
           <span className="inline-block mt-3 text-xs text-muted-foreground group-hover:text-foreground transition-colors">
             View flow &rarr;
+          </span>
+        </button>
+
+        <button onClick={() => onNavigate("architecture")} className="group p-5 rounded-xl border border-secondary bg-card hover:border-muted-foreground/30 transition-all text-left">
+          <div className="flex items-center gap-2 mb-2">
+            <ArchIcon />
+            <h3 className="text-sm font-semibold text-foreground">Architecture</h3>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Data flow, workflow durability, and how chat tools, reviews, and indexing each get their data.
+          </p>
+          <span className="inline-block mt-3 text-xs text-muted-foreground group-hover:text-foreground transition-colors">
+            View architecture &rarr;
           </span>
         </button>
       </div>
@@ -369,8 +404,8 @@ function OverviewSection({ onNavigate }: { onNavigate: (s: Section) => void }) {
         <h3 className="text-sm font-semibold text-foreground mb-3">Tambo SDK Features Used</h3>
         <div className="grid gap-3 sm:grid-cols-2">
           {[
-            { label: "Generative UI Components", desc: "13 registered components with Zod prop schemas" },
-            { label: "Tool Calling", desc: "9 tools with input/output validation via Zod" },
+            { label: "Generative UI Components", desc: "Registered components with Zod prop schemas" },
+            { label: "Tool Calling", desc: "GitHub tools with input/output validation via Zod" },
             { label: "Thread Management", desc: "useTamboThread, useTamboThreadList for conversations" },
             { label: "Context Helpers", desc: "Selected repo + GitHub status always available to AI" },
             { label: "Component State", desc: "Two-way ReviewChecklist — AI reads & writes state" },
@@ -401,7 +436,7 @@ function ToolsSection() {
       <div>
         <h2 className="text-2xl font-bold text-foreground mb-2">GitHub Tools</h2>
         <p className="text-muted-foreground text-sm leading-relaxed">
-          These are the 9 things the AI can actually <em>do</em>. Each tool runs server-side through
+          These are the things the AI can actually <em>do</em>. Each tool runs server-side through
           your GitHub credentials — the AI decides which one to call based on what you asked, fires
           it off, and feeds the result into a component. Click any tool to see the full details.
         </p>
@@ -561,6 +596,205 @@ function ComponentsSection() {
             <code className="text-foreground/80 bg-accent px-1 rounded">SecurityAlert</code> cards, and a
             <code className="text-foreground/80 bg-accent px-1 rounded">PRStatsChart</code> — all in one message.
           </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Architecture ─── */
+function ArchitectureSection() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-foreground mb-2">Architecture</h2>
+        <p className="text-muted-foreground text-sm leading-relaxed">
+          How data flows through RepoChat &mdash; three distinct paths for chat, reviews, and indexing,
+          each with different data sources and durability guarantees.
+        </p>
+      </div>
+
+      {/* Data Sources Table */}
+      <div className="p-5 rounded-xl border border-secondary bg-card">
+        <h3 className="text-sm font-semibold text-foreground mb-4">Data Sources</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-secondary">
+                <th className="text-left py-2 pr-4 text-muted-foreground/60 uppercase tracking-wider font-medium">Use Case</th>
+                <th className="text-left py-2 pr-4 text-muted-foreground/60 uppercase tracking-wider font-medium">Data Source</th>
+                <th className="text-left py-2 text-muted-foreground/60 uppercase tracking-wider font-medium">Details</th>
+              </tr>
+            </thead>
+            <tbody className="text-muted-foreground">
+              <tr className="border-b border-secondary/50">
+                <td className="py-3 pr-4 text-foreground font-medium">Chat tools (11 tools)</td>
+                <td className="py-3 pr-4">
+                  <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[10px] font-medium">Hybrid</span>
+                </td>
+                <td className="py-3">searchCode &amp; analyzePR use indexed AST chunks (vector search) when available, GitHub API fallback for the rest</td>
+              </tr>
+              <tr className="border-b border-secondary/50">
+                <td className="py-3 pr-4 text-foreground font-medium">Automated PR reviews</td>
+                <td className="py-3 pr-4">
+                  <span className="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 text-[10px] font-medium">Hybrid</span>
+                </td>
+                <td className="py-3">GitHub API (PR files + details) + indexed AST chunks (vector search for codebase context)</td>
+              </tr>
+              <tr>
+                <td className="py-3 pr-4 text-foreground font-medium">Code indexing</td>
+                <td className="py-3 pr-4">
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-medium">GitHub + Tree-sitter + OpenAI</span>
+                </td>
+                <td className="py-3">Fetches files, parses AST with Tree-sitter, generates embeddings, stores chunks in Convex</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* When Things Sync */}
+      <div className="p-5 rounded-xl border border-secondary bg-card">
+        <h3 className="text-sm font-semibold text-foreground mb-4">When Things Sync</h3>
+        <div className="space-y-3">
+          {[
+            {
+              label: "Indexing triggers",
+              items: ["Manual (Settings page)", "Push webhook to indexed branch", "Initial setup when adding a branch"],
+              color: "bg-emerald-500",
+            },
+            {
+              label: "Review triggers",
+              items: ["PR opened webhook (if autoReview enabled)", "PR synchronized webhook (new commits pushed)"],
+              color: "bg-purple-500",
+            },
+            {
+              label: "Chat tools",
+              items: ["searchCode + analyzePR use indexed data when branch is indexed", "Falls back to GitHub API in real-time when not indexed", "Other tools (getFileContent, listPRs, etc.) always hit GitHub directly"],
+              color: "bg-blue-500",
+            },
+          ].map((group) => (
+            <div key={group.label} className="flex gap-3">
+              <div className={`w-1 rounded-full ${group.color} flex-shrink-0`} />
+              <div>
+                <p className="text-xs font-medium text-foreground mb-1">{group.label}</p>
+                <ul className="space-y-0.5">
+                  {group.items.map((item, i) => (
+                    <li key={i} className="text-xs text-muted-foreground flex gap-1.5">
+                      <span className="text-muted-foreground/40">&#8250;</span>
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Workflow Durability */}
+      <div className="p-5 rounded-xl border border-secondary bg-card">
+        <h3 className="text-sm font-semibold text-foreground mb-4">Workflow Durability</h3>
+        <p className="text-xs text-muted-foreground mb-3">
+          Both indexing and review pipelines run as durable Convex workflows (<code className="text-foreground/80 bg-accent px-1 rounded">@convex-dev/workflow</code>).
+          Each step is checkpointed &mdash; if the server restarts mid-pipeline, it picks up where it left off.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {[
+            { label: "Checkpointed steps", desc: "Each batch of files is a separate workflow step that survives restarts" },
+            { label: "Batched processing", desc: "Files processed in batches of 5 to stay well under the 10-minute action timeout" },
+            { label: "Automatic retries", desc: "Exponential backoff on GitHub / OpenRouter / OpenAI failures (3 attempts, 1s / 2s / 4s)" },
+            { label: "No lost progress", desc: "Failed batches don't roll back previously completed work" },
+          ].map((item) => (
+            <div key={item.label} className="flex gap-2">
+              <div className="w-1 rounded-full bg-accent flex-shrink-0 mt-1" style={{ height: 32 }} />
+              <div>
+                <p className="text-xs font-medium text-foreground">{item.label}</p>
+                <p className="text-xs text-muted-foreground">{item.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Architecture Diagram */}
+      <div className="p-5 rounded-xl border border-secondary bg-card">
+        <h3 className="text-sm font-semibold text-foreground mb-3">Data Flow Paths</h3>
+        <div className="font-mono text-xs text-muted-foreground leading-relaxed whitespace-pre overflow-x-auto">
+{`                          ┌──────────────────┐
+                          │   GitHub API      │
+                          │  (Octokit + App)  │
+                          └──────┬───────────┘
+                 ┌───────────────┼───────────────┐
+                 │               │               │
+          ┌──────▼──────┐ ┌─────▼──────┐ ┌──────▼──────┐
+          │  Chat Tools │ │  PR Review │ │  Indexing   │
+          │ (11 tools)  │ │  Workflow  │ │  Workflow   │
+          └──────┬──────┘ └─────┬──────┘ └──────┬──────┘
+                 │               │               │
+          Indexed search   ┌────▼────┐    ┌──────▼──────┐
+          + GH fallback    │ OpenRouter│    │ Tree-sitter │
+                 │         │  (LLM)  │    │  (AST parse)│
+                 │         └────┬────┘    └──────┬──────┘
+                 │              │                 │
+                 ├─────────┬────▼─────────────────▼────┐
+                 │         │      Convex Database       │
+                 │         │  reviews / codeChunks /    │
+                 │         │  indexingJobs (+ vectors)  │
+                 │         └───────────────────────────┘
+                 ▼
+          ┌──────────────┐
+          │ Tambo Cloud  │
+          │ (AI + Tools) │──▶ Generative UI Components
+          └──────────────┘`}
+        </div>
+      </div>
+
+      {/* Pipeline Steps */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="p-5 rounded-xl border border-secondary bg-card">
+          <h3 className="text-sm font-semibold text-emerald-400 mb-3">Indexing Pipeline</h3>
+          <ol className="space-y-2 text-xs text-muted-foreground">
+            {[
+              "Create indexing job record",
+              "Fetch repo tree from GitHub",
+              "Compute file diff (changed / deleted / unchanged)",
+              "Delete stale file chunks (batches of 5)",
+              "For each changed file batch:",
+              "  Fetch content from GitHub",
+              "  Parse AST with Tree-sitter",
+              "  Generate docstrings (OpenRouter)",
+              "  Generate embeddings (OpenAI)",
+              "  Store chunks in Convex",
+              "Mark branch as indexed",
+            ].map((step, i) => (
+              <li key={i} className="flex gap-2">
+                <span className="text-emerald-400/60 font-mono w-4 text-right flex-shrink-0">{step.startsWith("  ") ? "" : `${i + 1}.`}</span>
+                <span className={step.startsWith("  ") ? "pl-4 text-muted-foreground/70" : ""}>{step.trim()}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        <div className="p-5 rounded-xl border border-secondary bg-card">
+          <h3 className="text-sm font-semibold text-purple-400 mb-3">Review Pipeline</h3>
+          <ol className="space-y-2 text-xs text-muted-foreground">
+            {[
+              "Create review record",
+              "Fetch PR files from GitHub",
+              "Fetch PR description",
+              "Vector search indexed chunks for context",
+              "Generate review via LLM (OpenRouter)",
+              "Determine event (APPROVE / REQUEST_CHANGES / COMMENT)",
+              "Post review to GitHub",
+              "Store findings + mark complete",
+            ].map((step, i) => (
+              <li key={i} className="flex gap-2">
+                <span className="text-purple-400/60 font-mono w-4 text-right flex-shrink-0">{i + 1}.</span>
+                <span>{step}</span>
+              </li>
+            ))}
+          </ol>
         </div>
       </div>
     </div>

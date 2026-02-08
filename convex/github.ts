@@ -524,23 +524,161 @@ export const getRepoTree = action({
   },
 });
 
-// Search code in repository
+// Search code — uses indexed vector search when available, falls back to GitHub API
 export const searchCode = action({
   args: {
     clerkId: v.string(),
     owner: v.string(),
     repo: v.string(),
     query: v.string(),
+    branch: v.optional(v.string()),
   },
-  handler: async (ctx, { clerkId, owner, repo, query }) => {
+  handler: async (ctx, { clerkId, owner, repo, query, branch }): Promise<{
+    source: "indexed" | "github";
+    branch: string | null;
+    totalCount: number;
+    items: Array<{
+      name: string;
+      path: string;
+      url: string;
+      code?: string;
+      docstring?: string;
+      startLine?: number;
+      endLine?: number;
+      chunkType?: string;
+      language?: string;
+      score?: number;
+    }>;
+  }> => {
     const installationId = await getUserInstallation(ctx, clerkId);
-    const octokit = createOctokitForInstallation(installationId);
 
+    // Try indexed search first
+    const fullName = `${owner}/${repo}`;
+    const repoDoc = await ctx.runQuery(internal.repos.getRepoByFullName, { fullName });
+
+    if (repoDoc && repoDoc.indexedBranches.length > 0) {
+      const searchBranch = branch || repoDoc.defaultBranch;
+      if (repoDoc.indexedBranches.includes(searchBranch)) {
+        try {
+          const chunks = await ctx.runAction(internal.indexing.searchCodeChunks, {
+            repoId: repoDoc._id,
+            branch: searchBranch,
+            query,
+            limit: 15,
+          });
+
+          return {
+            source: "indexed",
+            branch: searchBranch,
+            totalCount: chunks.length,
+            items: chunks.map((c: any) => ({
+              name: c.name,
+              path: c.filePath,
+              url: `https://github.com/${owner}/${repo}/blob/${searchBranch}/${c.filePath}#L${c.startLine}-L${c.endLine}`,
+              code: c.code.slice(0, 2000),
+              docstring: c.docstring,
+              startLine: c.startLine,
+              endLine: c.endLine,
+              chunkType: c.chunkType,
+              language: c.language,
+              score: c.score,
+            })),
+          };
+        } catch (err) {
+          console.error("Indexed search failed, falling back to GitHub:", err);
+        }
+      }
+    }
+
+    // Fall back to GitHub search
+    const octokit = createOctokitForInstallation(installationId);
     const { data } = await octokit.search.code({
       q: `${query} repo:${owner}/${repo}`,
       per_page: 30,
     });
 
-    return data;
+    return {
+      source: "github",
+      branch: branch || null,
+      totalCount: data.total_count,
+      items: data.items.map((item) => ({
+        name: item.name,
+        path: item.path,
+        url: item.html_url,
+      })),
+    };
+  },
+});
+
+// List commits on a branch
+export const listCommits = action({
+  args: {
+    clerkId: v.string(),
+    owner: v.string(),
+    repo: v.string(),
+    branch: v.optional(v.string()),
+    perPage: v.optional(v.number()),
+  },
+  handler: async (ctx, { clerkId, owner, repo, branch, perPage = 15 }) => {
+    const installationId = await getUserInstallation(ctx, clerkId);
+    const octokit = createOctokitForInstallation(installationId);
+
+    const { data } = await octokit.repos.listCommits({
+      owner,
+      repo,
+      sha: branch,
+      per_page: perPage,
+    });
+
+    return data.map((c) => ({
+      sha: c.sha,
+      message: c.commit.message,
+      author: c.commit.author?.name || c.author?.login || "unknown",
+      authorAvatar: c.author?.avatar_url,
+      date: c.commit.author?.date || "",
+      url: c.html_url,
+    }));
+  },
+});
+
+// Compare two commits, branches, or tags
+export const compareCommits = action({
+  args: {
+    clerkId: v.string(),
+    owner: v.string(),
+    repo: v.string(),
+    base: v.string(),
+    head: v.string(),
+  },
+  handler: async (ctx, { clerkId, owner, repo, base, head }) => {
+    const installationId = await getUserInstallation(ctx, clerkId);
+    const octokit = createOctokitForInstallation(installationId);
+
+    const { data } = await octokit.repos.compareCommits({
+      owner,
+      repo,
+      base,
+      head,
+    });
+
+    return {
+      status: data.status,
+      aheadBy: data.ahead_by,
+      behindBy: data.behind_by,
+      totalCommits: data.total_commits,
+      commits: data.commits.map((c) => ({
+        sha: c.sha,
+        message: c.commit.message,
+        author: c.commit.author?.name || c.author?.login || "unknown",
+        date: c.commit.author?.date || "",
+      })),
+      files: (data.files || []).map((f) => ({
+        filename: f.filename,
+        status: f.status,
+        additions: f.additions,
+        deletions: f.deletions,
+        patch: f.patch,
+      })),
+    };
   },
 });

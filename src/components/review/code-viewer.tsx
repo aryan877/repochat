@@ -15,6 +15,8 @@ export const codeViewerSchema = z.object({
 
 export type CodeViewerProps = z.infer<typeof codeViewerSchema>;
 
+import { CopyIcon, CheckIcon, ExpandIcon, MinimizeIcon, GitHubIcon, FileIcon } from "./icons";
+
 const getMonacoLanguage = (filePath: string, language?: string): string => {
   if (language) return language;
   const ext = filePath.split(".").pop()?.toLowerCase();
@@ -65,70 +67,82 @@ export function CodeViewer({
   }, [highlightLines, startLine]);
 
   return (
-    <div className={`my-3 ${isExpanded ? "fixed inset-4 z-50 bg-[#0a0a0a]" : ""}`}>
-      <div className="flex items-center justify-between py-2">
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-[#fafafa] font-mono">{fileName}</span>
-          <span className="text-xs text-[#525252] font-mono">{filePath}</span>
+    <div className={`${isExpanded ? "fixed inset-4 z-50" : "my-3"}`}>
+      <div className={`rounded-xl bg-[#111111] overflow-hidden ${isExpanded ? "h-full flex flex-col" : ""}`}>
+        {/* Tool label */}
+        <div className="px-4 py-2">
+          <span className="text-[10px] font-mono text-[#444] uppercase tracking-widest">CodeViewer</span>
         </div>
-        <div className="flex items-center gap-4 text-xs">
-          <span className="text-[#525252]">{lineCount} lines</span>
-          <span className="text-[#525252] uppercase">{monacoLanguage}</span>
-          {githubUrl && (
-            <a
-              href={githubUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[#525252] hover:text-[#a3a3a3] transition-colors"
+
+        {/* File header */}
+        <div className="flex items-center justify-between px-4 py-2.5">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="text-[#666] flex-shrink-0"><FileIcon /></div>
+            <span className="text-[13px] font-mono text-[#ccc] truncate">{fileName}</span>
+            {filePath !== fileName && (
+              <span className="text-[11px] font-mono text-[#444] truncate hidden sm:inline">{filePath}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <span className="text-[11px] text-[#555]">{lineCount} lines</span>
+            <span className="text-[10px] font-mono text-[#444] uppercase">{monacoLanguage}</span>
+            {githubUrl && (
+              <a
+                href={githubUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#555] hover:text-[#aaa] transition-colors"
+              >
+                <GitHubIcon />
+              </a>
+            )}
+            <button
+              onClick={handleCopy}
+              className="inline-flex items-center gap-1 text-[11px] text-[#555] hover:text-[#aaa] transition-colors"
             >
-              GitHub
-            </a>
-          )}
-          <button
-            onClick={handleCopy}
-            className="text-[#525252] hover:text-[#a3a3a3] transition-colors"
-          >
-            {copied ? "Copied" : "Copy"}
-          </button>
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="text-[#525252] hover:text-[#a3a3a3] transition-colors"
-          >
-            {isExpanded ? "Minimize" : "Expand"}
-          </button>
+              {copied ? <><CheckIcon /> Copied</> : <><CopyIcon /> Copy</>}
+            </button>
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="text-[#555] hover:text-[#aaa] transition-colors"
+            >
+              {isExpanded ? <MinimizeIcon /> : <ExpandIcon />}
+            </button>
+          </div>
         </div>
-      </div>
 
-      <div className={`bg-[#141414] rounded overflow-hidden ${isExpanded ? "h-[calc(100%-40px)]" : "h-[300px]"}`}>
-        <Editor
-          height="100%"
-          language={monacoLanguage}
-          value={content}
-          theme="vs-dark"
-          onMount={handleEditorDidMount}
-          options={{
-            readOnly: true,
-            minimap: { enabled: isExpanded },
-            scrollBeyondLastLine: false,
-            fontSize: 12,
-            lineNumbers: "on",
-            lineNumbersMinChars: 4,
-            renderLineHighlight: "all",
-            scrollbar: { vertical: "auto", horizontal: "auto" },
-            padding: { top: 8, bottom: 8 },
-            folding: true,
-            wordWrap: "off",
-            automaticLayout: true,
-            glyphMargin: highlightLines.length > 0,
-          }}
-        />
-      </div>
-
-      {startLine > 1 && (
-        <div className="text-xs text-[#525252] mt-2">
-          Starting at line {startLine}
+        {/* Editor */}
+        <div className={`${isExpanded ? "flex-1" : "h-[300px]"}`}>
+          <Editor
+            height="100%"
+            language={monacoLanguage}
+            value={content}
+            theme="vs-dark"
+            onMount={handleEditorDidMount}
+            options={{
+              readOnly: true,
+              minimap: { enabled: isExpanded },
+              scrollBeyondLastLine: false,
+              fontSize: 12,
+              lineNumbers: "on",
+              lineNumbersMinChars: 4,
+              renderLineHighlight: "all",
+              scrollbar: { vertical: "auto", horizontal: "auto" },
+              padding: { top: 8, bottom: 8 },
+              folding: true,
+              wordWrap: "off",
+              automaticLayout: true,
+              glyphMargin: highlightLines.length > 0,
+            }}
+          />
         </div>
-      )}
+
+        {startLine > 1 && (
+          <div className="px-4 py-2 text-xs text-[#555]">
+            Starting at line {startLine}
+          </div>
+        )}
+      </div>
 
       {isExpanded && (
         <div

@@ -3,6 +3,7 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
+import { workflow } from "./workflowManager";
 
 // Generate PR review using LLM
 async function generateReview(
@@ -186,7 +187,171 @@ function formatReviewComment(
   return comment;
 }
 
-// Main review action
+// ============================================================================
+// Discrete Workflow Action Steps
+// ============================================================================
+
+/** Fetch PR files, details, and codebase context via vector search. */
+export const fetchPRData = internalAction({
+  args: {
+    installationId: v.number(),
+    owner: v.string(),
+    repoName: v.string(),
+    prNumber: v.number(),
+    prTitle: v.string(),
+    repoId: v.id("repos"),
+    baseBranch: v.string(),
+  },
+  handler: async (ctx, { installationId, owner, repoName, prNumber, prTitle, repoId, baseBranch }): Promise<{
+    files: Array<{ filename: string; status: string; additions: number; deletions: number; patch?: string }>;
+    prBody: string | null;
+    codebaseContext: Array<{ name: string; docstring: string; code: string; filePath: string }>;
+  }> => {
+    // Get PR files
+    const files: Array<{ filename: string; status: string; additions: number; deletions: number; patch?: string }> = await ctx.runAction(internal.github.getPullRequestFiles, {
+      installationId,
+      owner,
+      repo: repoName,
+      prNumber,
+    });
+
+    // Get PR description
+    const pr: { body: string | null } = await ctx.runAction(internal.github.getPullRequest, {
+      installationId,
+      owner,
+      repo: repoName,
+      prNumber,
+    });
+
+    // Get codebase context via vector search
+    const changedPaths = files
+      .map((f: { filename: string }) => f.filename)
+      .join(" ");
+    let codebaseContext: Array<{
+      name: string;
+      docstring: string;
+      code: string;
+      filePath: string;
+    }> = [];
+
+    try {
+      const chunks = await ctx.runAction(internal.indexing.searchCodeChunks, {
+        repoId,
+        branch: baseBranch,
+        query: `${prTitle} ${changedPaths}`,
+        limit: 10,
+      });
+      codebaseContext = chunks.map((c: any) => ({
+        name: c.name,
+        docstring: c.docstring,
+        code: c.code,
+        filePath: c.filePath,
+      }));
+    } catch (error) {
+      console.log("No codebase index available, reviewing without context");
+    }
+
+    return { files, prBody: pr.body, codebaseContext };
+  },
+});
+
+/** Generate the LLM review and post it to GitHub. */
+export const generateAndPostReview = internalAction({
+  args: {
+    installationId: v.number(),
+    owner: v.string(),
+    repoName: v.string(),
+    prNumber: v.number(),
+    prTitle: v.string(),
+    prBody: v.optional(v.string()),
+    files: v.array(
+      v.object({
+        filename: v.string(),
+        status: v.string(),
+        additions: v.number(),
+        deletions: v.number(),
+        patch: v.optional(v.string()),
+      }),
+    ),
+    codebaseContext: v.array(
+      v.object({
+        name: v.string(),
+        docstring: v.string(),
+        code: v.string(),
+        filePath: v.string(),
+      }),
+    ),
+    reviewId: v.id("reviews"),
+  },
+  handler: async (ctx, args): Promise<{
+    summary: string;
+    findings: Array<{ type: string; severity: string; title: string; description: string; filePath: string; line?: number; suggestion?: string }>;
+    githubReviewId: number;
+  }> => {
+    const {
+      installationId,
+      owner,
+      repoName,
+      prNumber,
+      prTitle,
+      prBody,
+      files,
+      codebaseContext,
+    } = args;
+
+    // Generate review
+    const review = await generateReview(
+      prTitle,
+      prBody ?? null,
+      files,
+      codebaseContext,
+    );
+
+    // Store findings
+    await ctx.runMutation(internal.reviewsMutations.updateReview, {
+      reviewId: args.reviewId,
+      summary: review.summary,
+      findings: review.findings,
+      status: "posting",
+    });
+
+    // Post review to GitHub
+    const reviewComment = formatReviewComment(
+      review.summary,
+      review.findings,
+    );
+    const event = review.findings.some(
+      (f) => f.severity === "critical" || f.severity === "high",
+    )
+      ? "REQUEST_CHANGES"
+      : review.findings.length > 0
+        ? "COMMENT"
+        : "APPROVE";
+
+    const postedReview: { id: number } = await ctx.runAction(
+      internal.github.postReviewComment,
+      {
+        installationId,
+        owner,
+        repo: repoName,
+        prNumber,
+        body: reviewComment,
+        event: event as "APPROVE" | "REQUEST_CHANGES" | "COMMENT",
+      },
+    );
+
+    return {
+      summary: review.summary,
+      findings: review.findings,
+      githubReviewId: postedReview.id,
+    };
+  },
+});
+
+// ============================================================================
+// Launcher — called by webhooks.ts (interface unchanged)
+// ============================================================================
+
 export const startReview = internalAction({
   args: {
     repoId: v.id("repos"),
@@ -224,126 +389,37 @@ export const startReview = internalAction({
       },
     );
 
-    try {
-      // Get repo details
-      const repo = await ctx.runQuery(internal.repos.getRepoInternal, {
+    // Get repo details
+    const repo = await ctx.runQuery(internal.repos.getRepoInternal, {
+      repoId,
+    });
+    if (!repo) throw new Error("Repo not found");
+
+    const workflowId = await workflow.start(
+      ctx,
+      internal.reviewWorkflow.reviewWorkflow,
+      {
         repoId,
-      });
-      if (!repo) throw new Error("Repo not found");
-
-      // Update status to analyzing
-      await ctx.runMutation(internal.reviewsMutations.updateReview, {
-        reviewId,
-        status: "analyzing",
-      });
-
-      // Get PR files
-      const files = await ctx.runAction(internal.github.getPullRequestFiles, {
         installationId,
-        owner: repo.owner,
-        repo: repo.name,
         prNumber,
-      });
-
-      // Get codebase context via vector search
-      // Search for context related to the changed files
-      const changedPaths = files
-        .map((f: { filename: string }) => f.filename)
-        .join(" ");
-      let codebaseContext: Array<{
-        name: string;
-        docstring: string;
-        code: string;
-        filePath: string;
-      }> = [];
-
-      try {
-        const chunks = await ctx.runAction(internal.indexing.searchCodeChunks, {
-          repoId,
-          branch: baseBranch,
-          query: `${prTitle} ${changedPaths}`,
-          limit: 10,
-        });
-        codebaseContext = chunks.map((c: any) => ({
-          name: c.name,
-          docstring: c.docstring,
-          code: c.code,
-          filePath: c.filePath,
-        }));
-      } catch (error) {
-        console.log("No codebase index available, reviewing without context");
-      }
-
-      // Update status to reviewing
-      await ctx.runMutation(internal.reviewsMutations.updateReview, {
-        reviewId,
-        status: "reviewing",
-      });
-
-      // Get PR description
-      const pr = await ctx.runAction(internal.github.getPullRequest, {
-        installationId,
-        owner: repo.owner,
-        repo: repo.name,
-        prNumber,
-      });
-
-      // Generate review
-      const review = await generateReview(
         prTitle,
-        pr.body,
-        files,
-        codebaseContext,
-      );
-
-      // Store findings
-      await ctx.runMutation(internal.reviewsMutations.updateReview, {
+        prAuthor: args.prAuthor,
+        prUrl,
+        baseBranch,
+        headBranch,
         reviewId,
-        summary: review.summary,
-        findings: review.findings,
-        status: "posting",
-      });
+        owner: repo.owner,
+        repoName: repo.name,
+      },
+      {
+        onComplete: internal.reviewWorkflow.onReviewComplete,
+        context: { reviewId },
+      },
+    );
 
-      // Post review to GitHub
-      const reviewComment = formatReviewComment(
-        review.summary,
-        review.findings,
-      );
-      const event = review.findings.some(
-        (f) => f.severity === "critical" || f.severity === "high",
-      )
-        ? "REQUEST_CHANGES"
-        : review.findings.length > 0
-          ? "COMMENT"
-          : "APPROVE";
-
-      const postedReview = await ctx.runAction(
-        internal.github.postReviewComment,
-        {
-          installationId,
-          owner: repo.owner,
-          repo: repo.name,
-          prNumber,
-          body: reviewComment,
-          event: event as "APPROVE" | "REQUEST_CHANGES" | "COMMENT",
-        },
-      );
-
-      // Complete
-      await ctx.runMutation(internal.reviewsMutations.updateReview, {
-        reviewId,
-        githubReviewId: postedReview.id,
-        status: "completed",
-        completedAt: Date.now(),
-      });
-    } catch (error) {
-      await ctx.runMutation(internal.reviewsMutations.updateReview, {
-        reviewId,
-        status: "failed",
-        error: error instanceof Error ? error.message : "Unknown error",
-        completedAt: Date.now(),
-      });
-      throw error;
-    }
+    await ctx.runMutation(internal.reviewsMutations.updateReview, {
+      reviewId,
+      workflowId,
+    });
   },
 });

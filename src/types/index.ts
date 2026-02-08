@@ -31,7 +31,7 @@ export type {
   GitHubReview,
   GitHubLineComment,
   GitHubMergeResult,
-  GitHubSearchResult,
+  CodeSearchResult,
   GitHubActions,
   GitHubToolsConfig,
 } from "./github";

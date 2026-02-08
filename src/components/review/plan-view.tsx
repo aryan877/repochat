@@ -20,6 +20,8 @@ export const planViewSchema = z.object({
 export type PlanStep = z.infer<typeof PlanStepSchema>;
 export type PlanViewProps = z.infer<typeof planViewSchema>;
 
+import { CheckCircleIcon, LoaderIcon } from "./icons";
+
 export function PlanView({
   title = "Plan",
   description,
@@ -30,25 +32,37 @@ export function PlanView({
   const progress = steps.length > 0 ? (completedCount / steps.length) * 100 : 0;
 
   return (
-    <div className="my-3">
-      <div className="py-3 border-b border-[#1f1f1f]">
+    <div className="rounded-xl bg-[#111111] overflow-hidden my-3">
+      {/* Tool label */}
+      <div className="px-5 py-2">
+        <span className="text-[10px] font-mono text-[#444] uppercase tracking-widest">PlanView</span>
+      </div>
+
+      {/* Header */}
+      <div className="px-5 pt-4 pb-3">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-[#fafafa] text-sm font-medium">{title}</h3>
-          <span className="text-xs text-[#525252]">{completedCount}/{steps.length}</span>
+          <h3 className="text-[14px] font-semibold text-[#e5e5e5]">{title}</h3>
+          <span className="text-xs font-mono text-[#666]">{completedCount}/{steps.length}</span>
         </div>
         {description && (
-          <p className="text-sm text-[#a3a3a3] mb-3">{description}</p>
+          <p className="text-[13px] text-[#999] leading-relaxed mb-3">{description}</p>
         )}
 
-        <div className="h-1 bg-[#1f1f1f] rounded-full overflow-hidden">
+        {/* Progress bar */}
+        <div className="h-1.5 bg-[#1a1a1a] rounded-full overflow-hidden">
           <div
-            className="h-full bg-[#525252] transition-all duration-500"
+            className={`h-full rounded-full transition-all duration-500 ${
+              progress === 100
+                ? "bg-gradient-to-r from-emerald-500 to-emerald-400"
+                : "bg-gradient-to-r from-blue-500 to-blue-400"
+            }`}
             style={{ width: `${progress}%` }}
           />
         </div>
       </div>
 
-      <div className="py-3 space-y-3">
+      {/* Steps */}
+      <div>
         {steps.map((step, idx) => {
           const isCurrentStep = currentStep === idx;
           const isCompleted = step.status === "completed";
@@ -57,35 +71,49 @@ export function PlanView({
           return (
             <div
               key={step.id}
-              className={`flex items-start gap-3 p-3 rounded ${
-                isCurrentStep ? "bg-[#141414]" : ""
-              }`}
+              className={`flex items-start gap-3 px-5 py-3 ${
+                idx > 0 ? "" : ""
+              } ${isCurrentStep ? "bg-[#0d1b2a]/30" : ""}`}
             >
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="w-5 h-5 rounded-full bg-[#1f1f1f] flex items-center justify-center text-xs text-[#525252]">
-                  {isCompleted ? "✓" : idx + 1}
-                </span>
+              {/* Status indicator */}
+              <div className="flex-shrink-0 mt-0.5">
+                {isCompleted ? (
+                  <div className="text-emerald-400">
+                    <CheckCircleIcon />
+                  </div>
+                ) : isInProgress ? (
+                  <div className="text-blue-400">
+                    <LoaderIcon />
+                  </div>
+                ) : (
+                  <div className="w-4 h-4 rounded-full border-2 border-[#333] ml-0.5" />
+                )}
               </div>
 
+              {/* Content */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className={`text-sm ${isCompleted ? "text-[#525252] line-through" : "text-[#fafafa]"}`}>
+                  <p className={`text-[13px] ${
+                    isCompleted ? "text-[#666] line-through" : "text-[#e5e5e5]"
+                  }`}>
                     {step.title}
                   </p>
                   {isInProgress && (
-                    <span className="text-xs text-[#525252]">in progress</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 font-medium">
+                      Active
+                    </span>
                   )}
                 </div>
                 {step.description && (
-                  <p className="text-xs text-[#525252] mt-1">{step.description}</p>
+                  <p className="text-[12px] text-[#666] mt-1 leading-relaxed">{step.description}</p>
                 )}
 
                 {step.files && step.files.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
+                  <div className="flex flex-wrap gap-1.5 mt-2">
                     {step.files.map((file) => (
                       <span
                         key={file}
-                        className="text-xs text-[#525252] font-mono"
+                        className="text-[11px] font-mono text-[#666] bg-[#0a0a0a] px-1.5 py-0.5 rounded border border-[#1e1e1e]"
                       >
                         {file.split("/").pop()}
                       </span>
@@ -98,9 +126,10 @@ export function PlanView({
         })}
       </div>
 
+      {/* Completion footer */}
       {progress === 100 && (
-        <div className="py-2 border-t border-[#1f1f1f] text-xs text-[#525252]">
-          Plan completed
+        <div className="px-5 py-3 bg-emerald-500/5">
+          <p className="text-[12px] text-emerald-400 font-medium">All steps completed</p>
         </div>
       )}
     </div>

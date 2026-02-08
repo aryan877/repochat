@@ -73,7 +73,7 @@ function SuggestionsBar({ initialSuggestions }: { initialSuggestions: Suggestion
   if (suggestions.length === 0) return null;
 
   return (
-    <div className="flex justify-center gap-2 pt-3 overflow-x-auto">
+    <div className="flex justify-center gap-2 pt-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
       {suggestions.map((suggestion) => (
         <button
           key={suggestion.id}

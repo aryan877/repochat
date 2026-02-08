@@ -9,7 +9,7 @@ export function createGitHubTools({ clerkId, actions }: GitHubToolsConfig): Tamb
     name: "analyzePR",
     description: `Analyze a GitHub pull request to review code changes.
 Use this when the user wants to review a PR or asks about PR changes.
-Returns PR metadata and list of changed files with diffs.`,
+Returns PR metadata, changed files with diffs, and relevant codebase context from the indexed repository when available.`,
     inputSchema: z.object({
       owner: z.string().describe("Repository owner (e.g., 'facebook')"),
       repo: z.string().describe("Repository name (e.g., 'react')"),
@@ -35,10 +35,42 @@ Returns PR metadata and list of changed files with diffs.`,
         deletions: z.number(),
         patch: z.string().optional(),
       })),
+      codebaseContext: z.array(z.object({
+        name: z.string(),
+        path: z.string(),
+        docstring: z.string(),
+        code: z.string(),
+        chunkType: z.string(),
+      })).optional().describe("Relevant code from the indexed codebase for deeper review context"),
     }),
     tool: async ({ owner, repo, prNumber }) => {
       const pr = await actions.getPullRequest({ clerkId, owner, repo, prNumber });
       const files = await actions.getPullRequestFiles({ clerkId, owner, repo, prNumber });
+
+      // Pull codebase context from indexed data for smarter reviews
+      let codebaseContext: Array<{
+        name: string; path: string; docstring: string; code: string; chunkType: string;
+      }> | undefined;
+
+      try {
+        const changedPaths = files.map((f) => f.filename).join(" ");
+        const contextQuery = `${pr.title} ${changedPaths}`;
+        const searchResult = await actions.searchCode({
+          clerkId, owner, repo, query: contextQuery, branch: pr.base.ref,
+        });
+
+        if (searchResult.source === "indexed" && searchResult.items.length > 0) {
+          codebaseContext = searchResult.items.slice(0, 10).map((item) => ({
+            name: item.name,
+            path: item.path,
+            docstring: item.docstring || "",
+            code: item.code || "",
+            chunkType: item.chunkType || "unknown",
+          }));
+        }
+      } catch {
+        // Indexed search unavailable — PR analysis still works without it
+      }
 
       return {
         title: pr.title,
@@ -60,6 +92,7 @@ Returns PR metadata and list of changed files with diffs.`,
           deletions: f.deletions,
           patch: f.patch,
         })),
+        codebaseContext,
       };
     },
   };
@@ -224,31 +257,37 @@ Use this when the user wants to explore a repository or see its structure.`,
 
   const searchCode: TamboTool = {
     name: "searchCode",
-    description: `Search for code in a repository.
-Use this when the user wants to find specific code patterns or functions.`,
+    description: `Search for code in a repository using semantic search on indexed codebase when available, with GitHub API fallback.
+Use this when the user wants to find specific code patterns, functions, or understand how something works.
+When the repo is indexed, results include code snippets, descriptions, and line numbers.`,
     inputSchema: z.object({
       owner: z.string().describe("Repository owner"),
       repo: z.string().describe("Repository name"),
-      query: z.string().describe("Search query"),
+      query: z.string().describe("Search query (semantic when indexed, string match on GitHub)"),
+      branch: z.string().optional().describe("Branch to search (defaults to indexed/default branch)"),
     }),
     outputSchema: z.object({
+      source: z.enum(["indexed", "github"]).describe("Which search backend was used"),
       totalCount: z.number(),
       items: z.array(z.object({
         name: z.string(),
         path: z.string(),
         url: z.string(),
+        code: z.string().optional().describe("Code snippet (indexed only)"),
+        docstring: z.string().optional().describe("Description of the code (indexed only)"),
+        startLine: z.number().optional(),
+        endLine: z.number().optional(),
+        chunkType: z.string().optional().describe("function, class, method, etc. (indexed only)"),
+        score: z.number().optional().describe("Relevance score (indexed only)"),
       })),
     }),
-    tool: async ({ owner, repo, query }) => {
-      const data = await actions.searchCode({ clerkId, query, owner, repo });
+    tool: async ({ owner, repo, query, branch }) => {
+      const data = await actions.searchCode({ clerkId, owner, repo, query, branch });
 
       return {
-        totalCount: data.total_count,
-        items: data.items.map((item) => ({
-          name: item.name,
-          path: item.path,
-          url: item.html_url,
-        })),
+        source: data.source,
+        totalCount: data.totalCount,
+        items: data.items,
       };
     },
   };
@@ -314,6 +353,66 @@ Use this when the user wants to see available branches.`,
     },
   };
 
+  const listCommits: TamboTool = {
+    name: "listCommits",
+    description: `List recent commits on a branch.
+Use this when the user wants to see commit history or recent changes on a branch.`,
+    inputSchema: z.object({
+      owner: z.string().describe("Repository owner"),
+      repo: z.string().describe("Repository name"),
+      branch: z.string().optional().describe("Branch name (defaults to main)"),
+      perPage: z.number().optional().describe("Number of commits to return (default 15)"),
+    }),
+    outputSchema: z.object({
+      commits: z.array(z.object({
+        sha: z.string(),
+        message: z.string(),
+        author: z.string(),
+        authorAvatar: z.string().optional(),
+        date: z.string(),
+        url: z.string(),
+      })),
+    }),
+    tool: async ({ owner, repo, branch, perPage }) => {
+      const commits = await actions.listCommits({ clerkId, owner, repo, branch, perPage });
+      return { commits };
+    },
+  };
+
+  const compareCommits: TamboTool = {
+    name: "compareCommits",
+    description: `Compare two branches, tags, or commits to see what changed between them.
+Use this when the user wants to see differences between branches or what changed since a specific commit.`,
+    inputSchema: z.object({
+      owner: z.string().describe("Repository owner"),
+      repo: z.string().describe("Repository name"),
+      base: z.string().describe("Base branch, tag, or commit SHA"),
+      head: z.string().describe("Head branch, tag, or commit SHA"),
+    }),
+    outputSchema: z.object({
+      status: z.string(),
+      aheadBy: z.number(),
+      behindBy: z.number(),
+      totalCommits: z.number(),
+      commits: z.array(z.object({
+        sha: z.string(),
+        message: z.string(),
+        author: z.string(),
+        date: z.string(),
+      })),
+      files: z.array(z.object({
+        filename: z.string(),
+        status: z.string(),
+        additions: z.number(),
+        deletions: z.number(),
+        patch: z.string().optional(),
+      })),
+    }),
+    tool: async ({ owner, repo, base, head }) => {
+      return await actions.compareCommits({ clerkId, owner, repo, base, head });
+    },
+  };
+
   return [
     analyzePR,
     getFileContent,
@@ -324,6 +423,8 @@ Use this when the user wants to see available branches.`,
     searchCode,
     listPullRequests,
     listBranches,
+    listCommits,
+    compareCommits,
   ];
 }
 

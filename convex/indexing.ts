@@ -8,6 +8,7 @@ import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { internalAction } from "./_generated/server";
 import { shouldSkipPath, computeFileDiff, type GitHubTreeItem } from "./shared";
+import { workflow } from "./workflowManager";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 require("tree-sitter-wasms/package.json");
@@ -369,7 +370,153 @@ async function generateEmbedding(text: string): Promise<number[]> {
 }
 
 // ============================================================================
-// Convex Actions
+// Discrete Workflow Action Steps
+// ============================================================================
+
+/** Fetch the repo tree from GitHub and compute the diff against existing indexed files. */
+export const fetchRepoTreeAndDiff = internalAction({
+  args: {
+    repoId: v.id("repos"),
+    branch: v.string(),
+    installationId: v.number(),
+    owner: v.string(),
+    repoName: v.string(),
+  },
+  handler: async (ctx, { repoId, branch, installationId, owner, repoName }) => {
+    const tree = await ctx.runAction(internal.github.getRepoContent, {
+      installationId,
+      owner,
+      repo: repoName,
+      branch,
+    });
+
+    const githubFiles: GitHubTreeItem[] = tree.tree.filter(
+      (item: GitHubTreeItem) =>
+        item.type === "blob" &&
+        !shouldSkipPath(item.path) &&
+        getLanguageInfo(item.path) !== null,
+    );
+
+    const existingFileShas: { filePath: string; fileSha: string | undefined }[] =
+      await ctx.runQuery(internal.indexingMutations.getBranchFileShas, {
+        repoId,
+        branch,
+      });
+
+    const { toFetch, toDelete, skippedCount } = computeFileDiff(
+      githubFiles,
+      existingFileShas,
+      (item) => item.filePath,
+      (item) => item.fileSha,
+    );
+
+    console.log(
+      `Incremental index: ${toFetch.length} changed, ${toDelete.length} removed, ${skippedCount} unchanged`,
+    );
+
+    return {
+      toFetch: toFetch.map((f) => ({ path: f.path, sha: f.sha })),
+      toDelete: toDelete.map((f) => ({ filePath: f.filePath })),
+      skippedCount,
+    };
+  },
+});
+
+/** Process a batch of files: fetch content, parse with tree-sitter, generate embeddings, store chunks. */
+export const processFileBatch = internalAction({
+  args: {
+    repoId: v.id("repos"),
+    branch: v.string(),
+    installationId: v.number(),
+    owner: v.string(),
+    repoName: v.string(),
+    files: v.array(v.object({ path: v.string(), sha: v.string() })),
+    jobId: v.id("indexingJobs"),
+  },
+  handler: async (ctx, { repoId, branch, installationId, owner, repoName, files, jobId }) => {
+    let processedCount = 0;
+    let chunkCount = 0;
+
+    for (const file of files) {
+      try {
+        await ctx.runMutation(internal.indexingMutations.deleteFileChunks, {
+          repoId,
+          branch,
+          filePath: file.path,
+        });
+
+        const { content } = await ctx.runAction(
+          internal.github.getFileContent,
+          {
+            installationId,
+            owner,
+            repo: repoName,
+            path: file.path,
+            ref: branch,
+          },
+        );
+
+        const chunks = await extractChunks(content, file.path);
+        const lang = path.extname(file.path).slice(1) || "code";
+
+        for (const chunk of chunks) {
+          const docstring =
+            chunk.docs || (await generateDocstring(chunk.code, lang));
+          const embedding = await generateEmbedding(
+            `${chunk.name}: ${docstring}\n\n${chunk.code.slice(0, 1000)}`,
+          );
+
+          await ctx.runMutation(internal.indexingMutations.storeCodeChunk, {
+            repoId,
+            branch,
+            filePath: file.path,
+            chunkType: chunk.chunkType,
+            name: chunk.name,
+            code: chunk.code,
+            docstring,
+            startLine: chunk.startLine,
+            endLine: chunk.endLine,
+            embedding,
+            language: lang,
+            fileSha: file.sha,
+          });
+
+          chunkCount++;
+        }
+
+        processedCount++;
+      } catch (fileErr) {
+        console.error(`Error processing ${file.path}:`, fileErr);
+      }
+    }
+
+    return { processedCount, chunkCount };
+  },
+});
+
+/** Delete stale file chunks in a batch. */
+export const deleteStaleBatch = internalAction({
+  args: {
+    repoId: v.id("repos"),
+    branch: v.string(),
+    filePaths: v.array(v.string()),
+  },
+  handler: async (ctx, { repoId, branch, filePaths }) => {
+    let deletedCount = 0;
+    for (const filePath of filePaths) {
+      const count = await ctx.runMutation(internal.indexingMutations.deleteFileChunks, {
+        repoId,
+        branch,
+        filePath,
+      });
+      deletedCount += count;
+    }
+    return { deletedCount };
+  },
+});
+
+// ============================================================================
+// Launcher — called by webhooks.ts (interface unchanged)
 // ============================================================================
 
 export const startIndexing = internalAction({
@@ -386,173 +533,50 @@ export const startIndexing = internalAction({
   handler: async (ctx, { repoId, branch, triggerType, commitSha }) => {
     const jobId = await ctx.runMutation(
       internal.indexingMutations.createIndexingJob,
+      { repoId, branch, triggerType, commitSha },
+    );
+
+    const repo = await ctx.runQuery(
+      internal.indexingMutations.getRepoInternal,
+      { repoId },
+    );
+    if (!repo) throw new Error("Repo not found");
+
+    const installationId = await ctx.runQuery(
+      internal.repos.getRepoInstallationId,
+      { repoId },
+    );
+    if (!installationId) throw new Error("Installation not found");
+
+    const workflowId = await workflow.start(
+      ctx,
+      internal.indexingWorkflow.indexingWorkflow,
       {
         repoId,
         branch,
         triggerType,
         commitSha,
+        jobId,
+        installationId,
+        owner: repo.owner,
+        repoName: repo.name,
+      },
+      {
+        onComplete: internal.indexingWorkflow.onIndexingComplete,
+        context: { jobId },
       },
     );
 
-    try {
-      const repo = await ctx.runQuery(
-        internal.indexingMutations.getRepoInternal,
-        { repoId },
-      );
-      if (!repo) throw new Error("Repo not found");
-
-      const installationId = await ctx.runQuery(
-        internal.repos.getRepoInstallationId,
-        { repoId },
-      );
-      if (!installationId) throw new Error("Installation not found");
-
-      await ctx.runMutation(internal.indexingMutations.updateIndexingJob, {
-        jobId,
-        status: "cloning",
-      });
-
-      // Get repo tree
-      const tree = await ctx.runAction(internal.github.getRepoContent, {
-        installationId,
-        owner: repo.owner,
-        repo: repo.name,
-        branch,
-      });
-
-      const githubFiles: GitHubTreeItem[] = tree.tree.filter(
-        (item: GitHubTreeItem) =>
-          item.type === "blob" &&
-          !shouldSkipPath(item.path) &&
-          getLanguageInfo(item.path) !== null,
-      );
-
-      const existingFileShas: { filePath: string; fileSha: string | undefined }[] =
-        await ctx.runQuery(internal.indexingMutations.getBranchFileShas, {
-          repoId,
-          branch,
-        });
-
-      const { toFetch, toDelete, skippedCount } = computeFileDiff(
-        githubFiles,
-        existingFileShas,
-        (item) => item.filePath,
-        (item) => item.fileSha,
-      );
-
-      const totalWork = toFetch.length + toDelete.length;
-
-      await ctx.runMutation(internal.indexingMutations.updateIndexingJob, {
-        jobId,
-        status: "parsing",
-        totalFiles: totalWork,
-        processedFiles: 0,
-      });
-
-      console.log(
-        `Incremental index: ${toFetch.length} changed, ${toDelete.length} removed, ${skippedCount} unchanged`,
-      );
-
-      for (const deleted of toDelete) {
-        await ctx.runMutation(internal.indexingMutations.deleteFileChunks, {
-          repoId,
-          branch,
-          filePath: deleted.filePath,
-        });
-      }
-
-      let totalChunks = 0;
-      let processedFiles = 0;
-
-      for (const file of toFetch) {
-        try {
-          await ctx.runMutation(internal.indexingMutations.deleteFileChunks, {
-            repoId,
-            branch,
-            filePath: file.path,
-          });
-
-          const { content } = await ctx.runAction(
-            internal.github.getFileContent,
-            {
-              installationId,
-              owner: repo.owner,
-              repo: repo.name,
-              path: file.path,
-              ref: branch,
-            },
-          );
-
-          const chunks = await extractChunks(content, file.path);
-          const lang = path.extname(file.path).slice(1) || "code";
-
-          if (chunks.length > 0) {
-            await ctx.runMutation(
-              internal.indexingMutations.updateIndexingJob,
-              {
-                jobId,
-                status: "embedding",
-              },
-            );
-          }
-
-          for (const chunk of chunks) {
-            const docstring =
-              chunk.docs || (await generateDocstring(chunk.code, lang));
-            const embedding = await generateEmbedding(
-              `${chunk.name}: ${docstring}\n\n${chunk.code.slice(0, 1000)}`,
-            );
-
-            await ctx.runMutation(internal.indexingMutations.storeCodeChunk, {
-              repoId,
-              branch,
-              filePath: file.path,
-              chunkType: chunk.chunkType,
-              name: chunk.name,
-              code: chunk.code,
-              docstring,
-              startLine: chunk.startLine,
-              endLine: chunk.endLine,
-              embedding,
-              language: lang,
-              fileSha: file.sha,
-            });
-
-            totalChunks++;
-          }
-
-          processedFiles++;
-          await ctx.runMutation(internal.indexingMutations.updateIndexingJob, {
-            jobId,
-            processedFiles,
-            totalChunks,
-            storedChunks: totalChunks,
-          });
-        } catch (fileErr) {
-          console.error(`Error processing ${file.path}:`, fileErr);
-        }
-      }
-
-      await ctx.runMutation(internal.repos.markBranchIndexed, {
-        repoId,
-        branch,
-      });
-      await ctx.runMutation(internal.indexingMutations.updateIndexingJob, {
-        jobId,
-        status: "completed",
-        completedAt: Date.now(),
-      });
-    } catch (err) {
-      await ctx.runMutation(internal.indexingMutations.updateIndexingJob, {
-        jobId,
-        status: "failed",
-        error: err instanceof Error ? err.message : "Unknown error",
-        completedAt: Date.now(),
-      });
-      throw err;
-    }
+    await ctx.runMutation(internal.indexingMutations.updateIndexingJob, {
+      jobId,
+      workflowId,
+    });
   },
 });
+
+// ============================================================================
+// Vector Search
+// ============================================================================
 
 // Code chunk with score type
 type CodeChunkWithScore = {

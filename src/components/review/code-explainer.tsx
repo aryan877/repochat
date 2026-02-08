@@ -21,6 +21,13 @@ export const codeExplainerSchema = z.object({
 export type ExplanationSection = z.infer<typeof ExplanationSectionSchema>;
 export type CodeExplainerProps = z.infer<typeof codeExplainerSchema>;
 
+const sectionTypeConfig: Record<string, { icon: string; border: string; bg: string; text: string }> = {
+  overview: { icon: "O", border: "border-blue-500/20", bg: "bg-blue-500/5", text: "text-blue-400" },
+  detail: { icon: "D", border: "border-[#1e1e1e]", bg: "bg-transparent", text: "text-[#666]" },
+  warning: { icon: "!", border: "border-yellow-500/20", bg: "bg-yellow-500/5", text: "text-yellow-400" },
+  tip: { icon: "*", border: "border-emerald-500/20", bg: "bg-emerald-500/5", text: "text-emerald-400" },
+};
+
 export function CodeExplainer({
   title = "",
   filePath,
@@ -30,47 +37,59 @@ export function CodeExplainer({
   relatedConcepts,
 }: CodeExplainerProps) {
   return (
-    <div className="my-3">
-      <div className="py-3 border-b border-[#1f1f1f]">
-        <h3 className="text-[#fafafa] text-sm font-medium mb-1">{title}</h3>
+    <div className="rounded-xl bg-[#111111] overflow-hidden my-3">
+      {/* Tool label */}
+      <div className="px-5 py-2">
+        <span className="text-[10px] font-mono text-[#444] uppercase tracking-widest">CodeExplainer</span>
+      </div>
+
+      {/* Header */}
+      <div className="px-5 pt-4 pb-3">
+        <h3 className="text-[14px] font-semibold text-[#e5e5e5] leading-snug mb-1">{title}</h3>
         {(filePath || lineRange) && (
-          <p className="text-xs text-[#525252] font-mono mb-2">
+          <p className="text-[12px] text-[#666] font-mono mb-2">
             {filePath}{lineRange && ` : ${lineRange}`}
           </p>
         )}
-        <p className="text-sm text-[#a3a3a3]">{summary}</p>
+        <p className="text-[13px] text-[#999] leading-relaxed">{summary}</p>
       </div>
 
-      <div className="py-3 space-y-4">
+      {/* Sections */}
+      <div>
         {sections.map((section, idx) => {
-          const typeLabel = section.type === "warning" ? "⚠" : section.type === "tip" ? "→" : "";
+          const config = sectionTypeConfig[section.type || "detail"];
 
           return (
-            <div key={idx} className="space-y-2">
-              <div className="flex items-center gap-2">
-                {typeLabel && <span className="text-[#525252]">{typeLabel}</span>}
-                <h4 className="text-sm text-[#fafafa]">{section.title}</h4>
+            <div key={idx} className={`px-5 py-3 ${idx > 0 ? "" : ""}`}>
+              <div className="flex items-center gap-2 mb-2">
+                <span className={`inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold border ${config.border} ${config.bg} ${config.text}`}>
+                  {config.icon}
+                </span>
+                <h4 className="text-[13px] font-medium text-[#e5e5e5]">{section.title}</h4>
               </div>
-              <p className="text-sm text-[#a3a3a3] whitespace-pre-wrap">{section.content}</p>
+              <p className="text-[13px] text-[#999] leading-relaxed whitespace-pre-wrap">{section.content}</p>
 
               {section.codeSnippet && (
-                <pre className="bg-[#141414] rounded p-3 text-xs font-mono text-[#a3a3a3] overflow-x-auto">
-                  <code>{section.codeSnippet}</code>
-                </pre>
+                <div className="mt-2.5 rounded-lg bg-[#0a0a0a] border border-[#1e1e1e] overflow-hidden">
+                  <pre className="px-3 py-2.5 text-[12px] font-mono text-[#bbb] overflow-x-auto leading-relaxed">
+                    <code>{section.codeSnippet}</code>
+                  </pre>
+                </div>
               )}
             </div>
           );
         })}
       </div>
 
+      {/* Related concepts */}
       {relatedConcepts && relatedConcepts.length > 0 && (
-        <div className="py-2 border-t border-[#1f1f1f]">
-          <p className="text-xs text-[#525252] mb-2">Related</p>
-          <div className="flex flex-wrap gap-2">
+        <div className="px-5 py-3 bg-[#0a0a0a]/30">
+          <p className="text-[10px] uppercase tracking-wider text-[#444] font-medium mb-2">Related</p>
+          <div className="flex flex-wrap gap-1.5">
             {relatedConcepts.map((concept) => (
               <span
                 key={concept}
-                className="text-xs text-[#a3a3a3]"
+                className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] text-[#888] bg-[#1a1a1a] border border-[#252525]"
               >
                 {concept}
               </span>

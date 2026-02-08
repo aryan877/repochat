@@ -21,6 +21,8 @@ export const prSummarySchema = z.object({
 
 export type PRSummaryProps = z.infer<typeof prSummarySchema>;
 
+import { GitMergeIcon, ArrowIcon, GitHubIcon } from "./icons";
+
 export function PRSummary({
   title = "Pull Request",
   number = 0,
@@ -36,67 +38,111 @@ export function PRSummary({
   description,
 }: PRSummaryProps) {
   const { streamStatus } = useTamboStreamStatus();
-  const formattedDate = createdAt ? new Date(createdAt).toLocaleDateString() : "";
+  const formattedDate = createdAt ? new Date(createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
 
   if (streamStatus?.isStreaming && !title) {
     return (
-      <div className="py-4 animate-pulse">
-        <div className="h-3 w-20 bg-[#1f1f1f] rounded mb-3" />
-        <div className="h-4 w-64 bg-[#1f1f1f] rounded mb-3" />
-        <div className="h-3 w-40 bg-[#1f1f1f] rounded mb-3" />
-        <div className="flex gap-6">
-          <div className="h-3 w-12 bg-[#1f1f1f] rounded" />
-          <div className="h-3 w-12 bg-[#1f1f1f] rounded" />
-          <div className="h-3 w-16 bg-[#1f1f1f] rounded" />
+      <div className="rounded-xl bg-[#111111] p-5 animate-pulse">
+        <div className="h-3 w-20 bg-[#1a1a1a] rounded mb-4" />
+        <div className="h-5 w-72 bg-[#1a1a1a] rounded mb-4" />
+        <div className="h-3 w-48 bg-[#1a1a1a] rounded mb-4" />
+        <div className="flex gap-4">
+          <div className="h-8 w-20 bg-[#1a1a1a] rounded" />
+          <div className="h-8 w-20 bg-[#1a1a1a] rounded" />
+          <div className="h-8 w-20 bg-[#1a1a1a] rounded" />
         </div>
       </div>
     );
   }
 
-  const stateColors: Record<string, string> = {
-    open: "text-[#4ade80]",
-    closed: "text-[#f87171]",
-    merged: "text-[#a78bfa]",
+  const stateConfig: Record<string, { bg: string; text: string; label: string }> = {
+    open: { bg: "bg-emerald-500/10", text: "text-emerald-400", label: "Open" },
+    closed: { bg: "bg-red-500/10", text: "text-red-400", label: "Closed" },
+    merged: { bg: "bg-purple-500/10", text: "text-purple-400", label: "Merged" },
   };
 
+  const stateStyle = stateConfig[state] || stateConfig.open;
+  const totalChanges = additions + deletions;
+  const addPct = totalChanges > 0 ? (additions / totalChanges) * 100 : 50;
+
   return (
-    <div className="py-4">
-      <div className="flex items-baseline gap-2 mb-2">
-        <span className="text-xs text-[#525252]">#{number}</span>
-        <span className={`text-xs ${stateColors[state] || "text-[#525252]"}`}>{state}</span>
+    <div className="rounded-xl bg-[#111111] overflow-hidden">
+      {/* Tool label */}
+      <div className="px-5 py-2">
+        <span className="text-[10px] font-mono text-[#444] uppercase tracking-widest">PRSummary</span>
+      </div>
+      {/* Header */}
+      <div className="px-5 pt-5 pb-4">
+        <div className="flex items-center gap-2.5 mb-3">
+          <span className="text-xs font-mono text-[#555]">#{number}</span>
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${stateStyle.bg} ${stateStyle.text}`}>
+            <GitMergeIcon />
+            {stateStyle.label}
+          </span>
+        </div>
+
+        <h3 className="text-[15px] font-semibold text-[#e5e5e5] leading-snug mb-3">{title}</h3>
+
+        <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-[#0a0a0a] border border-[#1e1e1e]">
+          <span className="text-xs font-mono text-[#888]">{headBranch}</span>
+          <ArrowIcon />
+          <span className="text-xs font-mono text-[#888]">{baseBranch}</span>
+        </div>
       </div>
 
-      <h3 className="text-[#fafafa] text-sm font-medium mb-2">{title}</h3>
+      {/* Stats bar */}
+      <div className="px-5 py-3 flex items-center gap-5">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-semibold text-emerald-400">+{additions.toLocaleString()}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-semibold text-red-400">-{deletions.toLocaleString()}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-[#666]">{changedFiles} {changedFiles === 1 ? "file" : "files"}</span>
+          </div>
+        </div>
 
-      <p className="text-xs text-[#525252] font-mono mb-3">
-        {headBranch} → {baseBranch}
-      </p>
-
-      <div className="flex gap-6 text-xs mb-3">
-        <span className="text-[#4ade80]">+{additions}</span>
-        <span className="text-[#f87171]">-{deletions}</span>
-        <span className="text-[#525252]">{changedFiles} files</span>
+        {/* Mini change bar */}
+        <div className="flex-1 max-w-[120px] h-1.5 rounded-full bg-[#1a1a1a] overflow-hidden">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400"
+            style={{ width: `${addPct}%` }}
+          />
+        </div>
       </div>
 
-      <div className="flex items-center gap-3 text-xs text-[#525252] mb-3">
-        <span>{author}</span>
-        {formattedDate && <span>{formattedDate}</span>}
-      </div>
-
+      {/* Description */}
       {description && (
-        <p className="text-sm text-[#a3a3a3] whitespace-pre-wrap">{description}</p>
+        <div className="px-5 py-3">
+          <p className="text-[13px] text-[#999] leading-relaxed whitespace-pre-wrap">{description}</p>
+        </div>
       )}
 
-      {url && (
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-[#525252] hover:text-[#a3a3a3] transition-colors mt-3 inline-block"
-        >
-          View on GitHub
-        </a>
-      )}
+      {/* Footer */}
+      <div className="px-5 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-xs text-[#555]">
+          <span className="font-medium text-[#888]">{author}</span>
+          {formattedDate && (
+            <>
+              <span className="text-[#333]">&middot;</span>
+              <span>{formattedDate}</span>
+            </>
+          )}
+        </div>
+        {url && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs text-[#555] hover:text-[#aaa] transition-colors"
+          >
+            <GitHubIcon />
+            View on GitHub
+          </a>
+        )}
+      </div>
     </div>
   );
 }

@@ -121,14 +121,53 @@ export interface GitHubMergeResult {
   message: string;
 }
 
-/** Search result - returned by searchCode */
-export interface GitHubSearchResult {
-  total_count: number;
+/** Search result - returned by searchCode (indexed or GitHub fallback) */
+export interface CodeSearchResult {
+  source: "indexed" | "github";
+  branch: string | null;
+  totalCount: number;
   items: Array<{
     name: string;
     path: string;
+    url: string;
+    code?: string;
+    docstring?: string;
+    startLine?: number;
+    endLine?: number;
+    chunkType?: string;
+    language?: string;
+    score?: number;
+  }>;
+}
+
+/** Commit list item - returned by listCommits */
+export interface GitHubCommitItem {
+  sha: string;
+  message: string;
+  author: string;
+  authorAvatar?: string;
+  date: string;
+  url: string;
+}
+
+/** Compare result - returned by compareCommits */
+export interface GitHubCompareResult {
+  status: string;
+  aheadBy: number;
+  behindBy: number;
+  totalCommits: number;
+  commits: Array<{
     sha: string;
-    html_url: string;
+    message: string;
+    author: string;
+    date: string;
+  }>;
+  files: Array<{
+    filename: string;
+    status: string | undefined;
+    additions: number;
+    deletions: number;
+    patch: string | undefined;
   }>;
 }
 
@@ -199,7 +238,8 @@ export interface GitHubActions {
     owner: string;
     repo: string;
     query: string;
-  }) => Promise<GitHubSearchResult>;
+    branch?: string;
+  }) => Promise<CodeSearchResult>;
 
   listPullRequests: (args: {
     clerkId: string;
@@ -213,6 +253,22 @@ export interface GitHubActions {
     owner: string;
     repo: string;
   }) => Promise<GitHubBranch[]>;
+
+  listCommits: (args: {
+    clerkId: string;
+    owner: string;
+    repo: string;
+    branch?: string;
+    perPage?: number;
+  }) => Promise<GitHubCommitItem[]>;
+
+  compareCommits: (args: {
+    clerkId: string;
+    owner: string;
+    repo: string;
+    base: string;
+    head: string;
+  }) => Promise<GitHubCompareResult>;
 }
 
 /** Config for createGitHubTools */

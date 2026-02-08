@@ -16,6 +16,21 @@ export const refactorCardSchema = z.object({
 
 export type RefactorCardProps = z.infer<typeof refactorCardSchema>;
 
+import { CopyIcon, CheckIcon } from "./icons";
+
+const complexityConfig: Record<string, { bg: string; text: string }> = {
+  easy: { bg: "bg-emerald-500/10", text: "text-emerald-400" },
+  medium: { bg: "bg-yellow-500/10", text: "text-yellow-400" },
+  complex: { bg: "bg-red-500/10", text: "text-red-400" },
+};
+
+const impactConfig: Record<string, { bg: string; text: string }> = {
+  performance: { bg: "bg-violet-500/10", text: "text-violet-400" },
+  readability: { bg: "bg-blue-500/10", text: "text-blue-400" },
+  maintainability: { bg: "bg-cyan-500/10", text: "text-cyan-400" },
+  security: { bg: "bg-red-500/10", text: "text-red-400" },
+};
+
 export function RefactorCard({
   title = "Refactoring Suggestion",
   description = "",
@@ -35,53 +50,72 @@ export function RefactorCard({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const cStyle = complexityConfig[complexity] || complexityConfig.medium;
+  const iStyle = impact ? impactConfig[impact] : null;
+
   return (
-    <div className="py-4 border-b border-[#1f1f1f] last:border-0">
-      <div className="flex items-baseline justify-between gap-2 mb-2">
-        <div className="flex items-center gap-3">
-          {complexity && (
-            <span className="text-xs text-[#525252] uppercase">{complexity}</span>
-          )}
-          {impact && (
-            <span className="text-xs text-[#525252]">{impact}</span>
-          )}
-        </div>
+    <div className="rounded-xl bg-[#111111] overflow-hidden my-3">
+      {/* Tool label */}
+      <div className="px-5 py-2">
+        <span className="text-[10px] font-mono text-[#444] uppercase tracking-widest">RefactorCard</span>
       </div>
 
-      <h3 className="text-[#fafafa] text-sm font-medium mb-2">{title}</h3>
-      <p className="text-[#a3a3a3] text-sm mb-3">{description}</p>
+      {/* Header */}
+      <div className="px-5 pt-4 pb-3">
+        <div className="flex items-center gap-2 mb-2.5">
+          {complexity && (
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wide ${cStyle.bg} ${cStyle.text}`}>
+              {complexity}
+            </span>
+          )}
+          {iStyle && (
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wide ${iStyle.bg} ${iStyle.text}`}>
+              {impact}
+            </span>
+          )}
+        </div>
 
-      <p className="text-xs text-[#525252] font-mono mb-4">
-        {filePath}{lineStart && `:${lineStart}`}
-      </p>
+        <h3 className="text-[14px] font-semibold text-[#e5e5e5] leading-snug mb-2">{title}</h3>
+        <p className="text-[13px] text-[#999] leading-relaxed">{description}</p>
+      </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-[#525252] uppercase">Before</span>
+      {/* File location */}
+      <div className="px-5 py-2">
+        <span className="text-[12px] font-mono text-[#666]">
+          {filePath}{lineStart ? `:${lineStart}` : ""}
+        </span>
+      </div>
+
+      {/* Before / After code */}
+      <div className="grid md:grid-cols-2">
+        {/* Before */}
+        <div className="md:border-r md:border-[#1e1e1e]">
+          <div className="flex items-center justify-between px-4 py-2 bg-[#200a0a]/30">
+            <span className="text-[10px] uppercase tracking-wider text-red-400/60 font-medium">Before</span>
             <button
               onClick={() => copyCode(beforeCode, setCopiedBefore)}
-              className="text-xs text-[#525252] hover:text-[#a3a3a3] transition-colors"
+              className="inline-flex items-center gap-1 text-[11px] text-[#555] hover:text-[#aaa] transition-colors"
             >
-              {copiedBefore ? "Copied" : "Copy"}
+              {copiedBefore ? <><CheckIcon /> Copied</> : <><CopyIcon /> Copy</>}
             </button>
           </div>
-          <pre className="bg-[#141414] rounded p-3 text-xs font-mono text-[#a3a3a3] overflow-x-auto">
+          <pre className="px-4 py-3 text-[12px] font-mono text-[#bbb] overflow-x-auto leading-relaxed bg-[#0a0a0a]/50">
             <code>{beforeCode}</code>
           </pre>
         </div>
 
+        {/* After */}
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-[#525252] uppercase">After</span>
+          <div className="flex items-center justify-between px-4 py-2 bg-[#0a2118]/30">
+            <span className="text-[10px] uppercase tracking-wider text-emerald-400/60 font-medium">After</span>
             <button
               onClick={() => copyCode(afterCode, setCopiedAfter)}
-              className="text-xs text-[#525252] hover:text-[#a3a3a3] transition-colors"
+              className="inline-flex items-center gap-1 text-[11px] text-[#555] hover:text-[#aaa] transition-colors"
             >
-              {copiedAfter ? "Copied" : "Copy"}
+              {copiedAfter ? <><CheckIcon /> Copied</> : <><CopyIcon /> Copy</>}
             </button>
           </div>
-          <pre className="bg-[#141414] rounded p-3 text-xs font-mono text-[#a3a3a3] overflow-x-auto">
+          <pre className="px-4 py-3 text-[12px] font-mono text-[#bbb] overflow-x-auto leading-relaxed bg-[#0a0a0a]/50">
             <code>{afterCode}</code>
           </pre>
         </div>

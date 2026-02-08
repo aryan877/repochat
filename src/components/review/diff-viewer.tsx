@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useMemo } from "react";
 import { z } from "zod";
-import { DiffEditor } from "@monaco-editor/react";
 
 export const diffViewerSchema = z.object({
   filePath: z.string().describe("Path of the file being changed"),
@@ -16,125 +15,143 @@ export const diffViewerSchema = z.object({
 
 export type DiffViewerProps = z.infer<typeof diffViewerSchema>;
 
-const getMonacoLanguage = (filePath: string, language?: string): string => {
-  if (language) return language;
-  const ext = filePath.split(".").pop()?.toLowerCase();
-  const languageMap: Record<string, string> = {
-    ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript",
-    py: "python", go: "go", rs: "rust", java: "java", json: "json",
-    yaml: "yaml", yml: "yaml", md: "markdown", sql: "sql", css: "css", html: "html",
-  };
-  return languageMap[ext || ""] || "plaintext";
+type DiffLine = {
+  type: "add" | "del" | "ctx" | "hunk";
+  content: string;
+  oldNum?: number;
+  newNum?: number;
 };
 
-function parsePatchToContents(patch: string): { original: string; modified: string } {
+function parsePatch(patch: string): DiffLine[] {
   const lines = patch.split("\n");
-  const originalLines: string[] = [];
-  const modifiedLines: string[] = [];
+  const result: DiffLine[] = [];
+  let oldLine = 0;
+  let newLine = 0;
 
   for (const line of lines) {
-    if (line.startsWith("@@")) continue;
-    else if (line.startsWith("+") && !line.startsWith("+++")) {
-      modifiedLines.push(line.slice(1));
-    } else if (line.startsWith("-") && !line.startsWith("---")) {
-      originalLines.push(line.slice(1));
-    } else if (!line.startsWith("\\")) {
+    if (line.startsWith("@@")) {
+      const match = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)/);
+      if (match) {
+        oldLine = parseInt(match[1], 10);
+        newLine = parseInt(match[2], 10);
+        result.push({ type: "hunk", content: line });
+      }
+      continue;
+    }
+
+    if (line.startsWith("+++") || line.startsWith("---")) continue;
+    if (line.startsWith("\\")) continue;
+
+    if (line.startsWith("+")) {
+      result.push({ type: "add", content: line.slice(1), newNum: newLine });
+      newLine++;
+    } else if (line.startsWith("-")) {
+      result.push({ type: "del", content: line.slice(1), oldNum: oldLine });
+      oldLine++;
+    } else {
       const content = line.startsWith(" ") ? line.slice(1) : line;
-      originalLines.push(content);
-      modifiedLines.push(content);
+      result.push({ type: "ctx", content, oldNum: oldLine, newNum: newLine });
+      oldLine++;
+      newLine++;
     }
   }
 
-  return { original: originalLines.join("\n"), modified: modifiedLines.join("\n") };
+  return result;
 }
 
-function PatchViewer({ patch }: { patch: string }) {
-  return (
-    <pre className="text-xs font-mono text-[#a3a3a3] overflow-x-auto p-3">
-      {patch.split("\n").map((line, i) => {
-        let color = "text-[#a3a3a3]";
-        if (line.startsWith("+") && !line.startsWith("+++")) color = "text-[#a3a3a3]";
-        else if (line.startsWith("-") && !line.startsWith("---")) color = "text-[#525252]";
-        return <div key={i} className={color}>{line}</div>;
-      })}
-    </pre>
-  );
-}
+import { ChevronIcon, FileIcon } from "./icons";
 
 export function DiffViewer({
   filePath = "file.ts",
   additions = 0,
   deletions = 0,
   patch = "",
-  language,
-  originalContent,
-  modifiedContent,
 }: DiffViewerProps) {
   const [expanded, setExpanded] = useState(true);
-  const [viewMode, setViewMode] = useState<"side-by-side" | "inline">("inline");
-
-  const monacoLanguage = getMonacoLanguage(filePath, language);
+  const diffLines = useMemo(() => parsePatch(patch), [patch]);
   const fileName = filePath.split("/").pop() || filePath;
 
-  const { original, modified } = originalContent && modifiedContent
-    ? { original: originalContent, modified: modifiedContent }
-    : parsePatchToContents(patch);
-
-  const hasSufficientContent = original.length > 0 || modified.length > 0;
-
-  const handleMount = useCallback((editor: unknown) => {
-    (editor as { updateOptions: (opts: object) => void }).updateOptions({
-      renderSideBySide: viewMode === "side-by-side",
-    });
-  }, [viewMode]);
-
   return (
-    <div className="my-3">
-      <div className="flex items-center justify-between py-2">
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="text-sm text-[#fafafa] font-mono hover:text-[#a3a3a3] transition-colors"
-        >
-          {fileName}
-        </button>
-        <div className="flex items-center gap-4 text-xs">
-          <span className="text-[#a3a3a3]">+{additions} -{deletions}</span>
-          {hasSufficientContent && (
-            <button
-              onClick={() => setViewMode(viewMode === "inline" ? "side-by-side" : "inline")}
-              className="text-[#525252] hover:text-[#a3a3a3] transition-colors"
-            >
-              {viewMode === "inline" ? "Split" : "Unified"}
-            </button>
-          )}
-        </div>
+    <div className="rounded-xl bg-[#111111] overflow-hidden my-3">
+      {/* Tool label */}
+      <div className="px-4 py-2">
+        <span className="text-[10px] font-mono text-[#444] uppercase tracking-widest">DiffViewer</span>
       </div>
+      {/* File header */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#161616] transition-colors"
+      >
+        <ChevronIcon open={expanded} />
+        <FileIcon />
+        <span className="text-[13px] font-mono text-[#ccc] truncate">{fileName}</span>
+        {filePath !== fileName && (
+          <span className="text-[11px] font-mono text-[#444] truncate hidden sm:inline">{filePath}</span>
+        )}
+        <div className="ml-auto flex items-center gap-3 flex-shrink-0">
+          <span className="text-xs font-mono text-emerald-400">+{additions}</span>
+          <span className="text-xs font-mono text-red-400">-{deletions}</span>
+        </div>
+      </button>
 
+      {/* Diff body */}
       {expanded && (
-        <div className="bg-[#141414] rounded overflow-hidden">
-          {hasSufficientContent ? (
-            <DiffEditor
-              height="300px"
-              language={monacoLanguage}
-              original={original}
-              modified={modified}
-              theme="vs-dark"
-              onMount={handleMount}
-              options={{
-                readOnly: true,
-                renderSideBySide: viewMode === "side-by-side",
-                minimap: { enabled: false },
-                scrollBeyondLastLine: false,
-                fontSize: 12,
-                lineNumbers: "off",
-                renderIndicators: false,
-                scrollbar: { vertical: "auto", horizontal: "auto" },
-                padding: { top: 8, bottom: 8 },
-              }}
-            />
-          ) : (
-            <PatchViewer patch={patch} />
-          )}
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12px] leading-[20px] font-mono border-collapse">
+            <tbody>
+              {diffLines.map((line, i) => {
+                if (line.type === "hunk") {
+                  return (
+                    <tr key={i} className="bg-[#0d1b2a]">
+                      <td className="w-[1px] px-2 text-right text-[#334155] select-none whitespace-nowrap border-r border-[#1e1e1e]" />
+                      <td className="w-[1px] px-2 text-right text-[#334155] select-none whitespace-nowrap border-r border-[#1e1e1e]" />
+                      <td className="px-4 py-0.5 text-[#4a7fb5] select-none">{line.content}</td>
+                    </tr>
+                  );
+                }
+
+                const bgClass =
+                  line.type === "add" ? "bg-[#0a2118]" :
+                  line.type === "del" ? "bg-[#200a0a]" :
+                  "";
+
+                const numClass =
+                  line.type === "add" ? "text-[#2d6b4f]" :
+                  line.type === "del" ? "text-[#6b2d2d]" :
+                  "text-[#333]";
+
+                const textClass =
+                  line.type === "add" ? "text-[#7ee787]" :
+                  line.type === "del" ? "text-[#f47067]" :
+                  "text-[#999]";
+
+                const marker =
+                  line.type === "add" ? "+" :
+                  line.type === "del" ? "-" :
+                  " ";
+
+                const markerClass =
+                  line.type === "add" ? "text-emerald-500" :
+                  line.type === "del" ? "text-red-500" :
+                  "text-transparent";
+
+                return (
+                  <tr key={i} className={`${bgClass} hover:brightness-125 transition-[filter]`}>
+                    <td className={`w-[1px] px-2 text-right select-none whitespace-nowrap border-r border-[#1e1e1e] ${numClass}`}>
+                      {line.type !== "add" ? line.oldNum : ""}
+                    </td>
+                    <td className={`w-[1px] px-2 text-right select-none whitespace-nowrap border-r border-[#1e1e1e] ${numClass}`}>
+                      {line.type !== "del" ? line.newNum : ""}
+                    </td>
+                    <td className="whitespace-pre">
+                      <span className={`inline-block w-5 text-center select-none ${markerClass}`}>{marker}</span>
+                      <span className={textClass}>{line.content}</span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

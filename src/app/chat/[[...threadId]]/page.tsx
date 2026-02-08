@@ -726,11 +726,25 @@ export default function ChatPage() {
             </div>
           </div>
 
-          <ModeToggle mode={mode} onChange={setMode} />
+          <div className="flex items-center gap-2">
+            <ModeToggle mode={mode} onChange={setMode} />
+            <Link
+              href="/docs"
+              target="_blank"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+              title="Documentation"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+              </svg>
+              <span className="hidden sm:inline">Docs</span>
+            </Link>
+          </div>
         </header>
 
-        {mode === "chat" ? (
-          selectedRepo ? (
+        {/* Chat view — always mounted, hidden when code mode active */}
+        <div className={mode === "chat" ? "flex-1 flex flex-col overflow-hidden min-h-0" : "hidden"}>
+          {selectedRepo ? (
             <div className="flex flex-1 pt-14 overflow-hidden">
               <MessageThreadFull
                 initialSuggestions={INITIAL_SUGGESTIONS}
@@ -771,12 +785,13 @@ export default function ChatPage() {
                 </p>
               </div>
             </div>
-          )
-        ) : (
-          <div className="flex-1 pt-14">
-            <CodeView repoId={selectedRepoId} repoName={selectedRepo} />
-          </div>
-        )}
+          )}
+        </div>
+
+        {/* Code view — always mounted, hidden when chat mode active */}
+        <div className={mode === "code" ? "flex-1 pt-14 flex flex-col overflow-hidden" : "hidden"}>
+          <CodeView repoId={selectedRepoId} repoName={selectedRepo} />
+        </div>
       </main>
     </div>
   );

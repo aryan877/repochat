@@ -8,6 +8,8 @@ import { useWebContainer } from "@/hooks/use-webcontainer";
 import type { ContainerStatus, FileNode } from "@/types/webcontainer";
 import { FileExplorer } from "./file-explorer";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { Allotment } from "allotment";
+import "allotment/dist/style.css";
 
 const MonacoEditor = lazy(() =>
   import("@monaco-editor/react").then((mod) => ({ default: mod.Editor }))
@@ -203,7 +205,7 @@ export function CodeView({ repoId, repoName }: CodeViewProps) {
   }, [repoFiles]);
 
   // WebContainer hook
-  const { status, previewUrl, terminalOutput, error, restart } = useWebContainer({
+  const { status, previewUrl, terminalOutput, error, restart, writeToProcess } = useWebContainer({
     files: isRunning && files.length > 0 ? convertToHookFormat(files) : null,
     enabled: isRunning && files.length > 0,
     installCommand: "npm install",
@@ -342,7 +344,7 @@ export function CodeView({ repoId, repoName }: CodeViewProps) {
   return (
     <div className="flex-1 flex flex-col bg-background overflow-hidden">
       {/* Toolbar */}
-      <div className="h-10 px-3 flex items-center justify-between border-b border-border bg-card/50">
+      <div className="h-10 px-3 flex items-center justify-between border-b border-border bg-card/50 flex-shrink-0">
         <div className="flex items-center gap-3">
           <button
             onClick={isRunning ? handleStop : handleStart}
@@ -396,132 +398,147 @@ export function CodeView({ repoId, repoName }: CodeViewProps) {
         </div>
       </div>
 
-      {/* Main content */}
-      <div className="flex-1 flex min-h-0">
-        {/* File explorer */}
-        <div className="w-56 flex-shrink-0 border-r border-border flex flex-col bg-card/30">
-          <div className="h-9 px-3 flex items-center justify-between border-b border-border">
-            <span className="text-xs font-medium text-muted-foreground truncate">
-              {repoName}
-            </span>
-            <span className="text-[10px] text-muted-foreground/60">
-              {repoFiles?.length || 0} files
-            </span>
-          </div>
-          <FileExplorer
-            files={files}
-            selectedPath={selectedFile?.path || null}
-            onFileSelect={setSelectedFile}
-          />
-        </div>
+      {/* Main content — Allotment split panes */}
+      <div className="flex-1 min-h-0">
+        <Allotment>
+          {/* File Explorer pane */}
+          <Allotment.Pane minSize={180} maxSize={400} preferredSize={224} snap>
+            <div className="h-full flex flex-col bg-card/30 border-r border-border">
+              <div className="h-9 px-3 flex items-center justify-between border-b border-border flex-shrink-0">
+                <span className="text-xs font-medium text-muted-foreground truncate">
+                  {repoName}
+                </span>
+                <span className="text-[10px] text-muted-foreground/60">
+                  {repoFiles?.length || 0} files
+                </span>
+              </div>
+              <FileExplorer
+                files={files}
+                selectedPath={selectedFile?.path || null}
+                onFileSelect={setSelectedFile}
+              />
+            </div>
+          </Allotment.Pane>
 
-        {/* Editor + Preview */}
-        <div className="flex-1 flex flex-col min-w-0">
-          <div className="flex-1 flex min-h-0">
-            {/* Editor */}
-            <div className="flex-1 min-w-0 flex flex-col">
-              {selectedFile ? (
-                <>
-                  <div className="h-9 px-3 flex items-center border-b border-border bg-card/50">
-                    <span className="text-xs text-muted-foreground truncate">
-                      {selectedFile.path}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-h-0">
+          {/* Editor + Preview + Terminal pane */}
+          <Allotment.Pane>
+            <Allotment vertical>
+              {/* Editor + Preview (top area) */}
+              <Allotment.Pane>
+                <Allotment>
+                  {/* Editor */}
+                  <Allotment.Pane>
+                    <div className="h-full flex flex-col min-w-0">
+                      {selectedFile ? (
+                        <>
+                          <div className="h-9 px-3 flex items-center border-b border-border bg-card/50 flex-shrink-0">
+                            <span className="text-xs text-muted-foreground truncate">
+                              {selectedFile.path}
+                            </span>
+                          </div>
+                          <div className="flex-1 min-h-0">
+                            <Suspense
+                              fallback={
+                                <div className="flex-1 flex items-center justify-center text-muted-foreground/60">
+                                  Loading editor...
+                                </div>
+                              }
+                            >
+                              <MonacoEditor
+                                height="100%"
+                                language={getLanguage(selectedFile.name)}
+                                value={selectedFile.content || ""}
+                                theme="vs-dark"
+                                options={{
+                                  readOnly: true,
+                                  minimap: { enabled: false },
+                                  fontSize: 13,
+                                  lineHeight: 20,
+                                  padding: { top: 12, bottom: 12 },
+                                  scrollBeyondLastLine: false,
+                                  wordWrap: "on",
+                                  renderLineHighlight: "none",
+                                  overviewRulerBorder: false,
+                                  hideCursorInOverviewRuler: true,
+                                  scrollbar: {
+                                    vertical: "auto",
+                                    horizontal: "auto",
+                                    verticalScrollbarSize: 8,
+                                    horizontalScrollbarSize: 8,
+                                  },
+                                }}
+                              />
+                            </Suspense>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex-1 flex items-center justify-center text-muted-foreground/60 text-sm">
+                          Select a file to view
+                        </div>
+                      )}
+                    </div>
+                  </Allotment.Pane>
+
+                  {/* Preview */}
+                  <Allotment.Pane>
+                    <div className="h-full flex flex-col border-l border-border">
+                      <div className="h-9 px-3 flex items-center border-b border-border bg-card/50 flex-shrink-0">
+                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                          Preview
+                        </span>
+                      </div>
+                      <div className="flex-1 bg-white min-h-0">
+                        {previewUrl ? (
+                          <iframe
+                            src={previewUrl}
+                            className="w-full h-full border-0"
+                            title="Preview"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-[#0a0a0a] text-muted-foreground/60 text-sm">
+                            {error ? (
+                              <div className="text-center px-4">
+                                <div className="text-red-400 mb-2">Error</div>
+                                <div className="text-xs">{error}</div>
+                              </div>
+                            ) : isRunning ? (
+                              <div className="flex items-center gap-2">
+                                <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.2" />
+                                  <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                </svg>
+                                <span>Starting server...</span>
+                              </div>
+                            ) : (
+                              "Click Run to start"
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </Allotment.Pane>
+                </Allotment>
+              </Allotment.Pane>
+
+              {/* Terminal (bottom area) */}
+              {showTerminal && (
+                <Allotment.Pane minSize={80} maxSize={500} preferredSize={192}>
+                  <div className="h-full border-t border-border">
                     <Suspense
                       fallback={
-                        <div className="flex-1 flex items-center justify-center text-muted-foreground/60">
-                          Loading editor...
+                        <div className="w-full h-full bg-[#0a0a0a] flex items-center justify-center text-muted-foreground/60 text-sm">
+                          Loading terminal...
                         </div>
                       }
                     >
-                      <MonacoEditor
-                        height="100%"
-                        language={getLanguage(selectedFile.name)}
-                        value={selectedFile.content || ""}
-                        theme="vs-dark"
-                        options={{
-                          readOnly: true,
-                          minimap: { enabled: false },
-                          fontSize: 13,
-                          lineHeight: 20,
-                          padding: { top: 12, bottom: 12 },
-                          scrollBeyondLastLine: false,
-                          wordWrap: "on",
-                          renderLineHighlight: "none",
-                          overviewRulerBorder: false,
-                          hideCursorInOverviewRuler: true,
-                          scrollbar: {
-                            vertical: "auto",
-                            horizontal: "auto",
-                            verticalScrollbarSize: 8,
-                            horizontalScrollbarSize: 8,
-                          },
-                        }}
-                      />
+                      <TerminalPanel output={terminalOutput} onData={writeToProcess} />
                     </Suspense>
                   </div>
-                </>
-              ) : (
-                <div className="flex-1 flex items-center justify-center text-muted-foreground/60 text-sm">
-                  Select a file to view
-                </div>
+                </Allotment.Pane>
               )}
-            </div>
-
-            {/* Preview */}
-            <div className="w-1/2 flex-shrink-0 border-l border-border flex flex-col">
-              <div className="h-9 px-3 flex items-center border-b border-border bg-card/50">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Preview
-                </span>
-              </div>
-              <div className="flex-1 bg-white">
-                {previewUrl ? (
-                  <iframe
-                    src={previewUrl}
-                    className="w-full h-full border-0"
-                    title="Preview"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-[#0a0a0a] text-muted-foreground/60 text-sm">
-                    {error ? (
-                      <div className="text-center px-4">
-                        <div className="text-red-400 mb-2">Error</div>
-                        <div className="text-xs">{error}</div>
-                      </div>
-                    ) : isRunning ? (
-                      <div className="flex items-center gap-2">
-                        <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.2" />
-                          <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                        </svg>
-                        <span>Starting server...</span>
-                      </div>
-                    ) : (
-                      "Click Run to start"
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Terminal */}
-          {showTerminal && (
-            <div className="h-48 flex-shrink-0 border-t border-border">
-              <Suspense
-                fallback={
-                  <div className="w-full h-full bg-[#0a0a0a] flex items-center justify-center text-muted-foreground/60 text-sm">
-                    Loading terminal...
-                  </div>
-                }
-              >
-                <TerminalPanel output={terminalOutput} />
-              </Suspense>
-            </div>
-          )}
-        </div>
+            </Allotment>
+          </Allotment.Pane>
+        </Allotment>
       </div>
     </div>
   );

@@ -146,7 +146,7 @@ export const MessageThreadFull = React.forwardRef<
     <ThreadContainer
       ref={ref}
       disableSidebarSpacing
-      className={cn("flex flex-col h-full bg-background", className)}
+      className={cn("flex flex-col h-full min-h-0 bg-background", className)}
       {...props}
     >
       <ScrollableMessageContainer className="flex-1 px-4 py-6">

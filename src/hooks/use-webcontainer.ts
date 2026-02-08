@@ -26,6 +26,7 @@ interface UseWebContainerReturn {
   terminalOutput: string;
   error: string | null;
   restart: () => void;
+  writeToProcess: (data: string) => void;
 }
 
 // Singleton WebContainer instance
@@ -89,6 +90,7 @@ export function useWebContainer({
   const containerRef = useRef<WebContainer | null>(null);
   const hasStartedRef = useRef(false);
   const mountedRef = useRef(true);
+  const processWriterRef = useRef<WritableStreamDefaultWriter<string> | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -163,6 +165,10 @@ export function useWebContainer({
         const [devCmd, ...devArgs] = devCommand.split(" ");
         const devProcess = await container.spawn(devCmd, devArgs);
 
+        // Store the process input writer so user keystrokes can be forwarded
+        const writer = devProcess.input.getWriter();
+        processWriterRef.current = writer;
+
         devProcess.output.pipeTo(
           new WritableStream({
             write(data) {
@@ -189,6 +195,7 @@ export function useWebContainer({
   useEffect(() => {
     if (!enabled) {
       hasStartedRef.current = false;
+      processWriterRef.current = null;
       setStatus("idle");
       setPreviewUrl(null);
       setError(null);
@@ -200,11 +207,18 @@ export function useWebContainer({
     teardownWebContainer();
     containerRef.current = null;
     hasStartedRef.current = false;
+    processWriterRef.current = null;
     setStatus("idle");
     setPreviewUrl(null);
     setError(null);
     setTerminalOutput("");
     setRestartKey((k) => k + 1);
+  }, []);
+
+  const writeToProcess = useCallback((data: string) => {
+    processWriterRef.current?.write(data).catch(() => {
+      // writer closed – ignore
+    });
   }, []);
 
   return {
@@ -213,5 +227,6 @@ export function useWebContainer({
     terminalOutput,
     error,
     restart,
+    writeToProcess,
   };
 }

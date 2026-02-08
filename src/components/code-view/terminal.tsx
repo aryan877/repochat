@@ -7,9 +7,10 @@ import "@xterm/xterm/css/xterm.css";
 
 interface TerminalPanelProps {
   output: string;
+  onData?: (data: string) => void;
 }
 
-export function TerminalPanel({ output }: TerminalPanelProps) {
+export function TerminalPanel({ output, onData }: TerminalPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -20,11 +21,11 @@ export function TerminalPanel({ output }: TerminalPanelProps) {
 
     const terminal = new Terminal({
       convertEol: true,
-      disableStdin: true,
+      disableStdin: false,
       fontSize: 13,
       fontFamily: "'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Monaco, 'Courier New', monospace",
       lineHeight: 1.4,
-      cursorBlink: false,
+      cursorBlink: true,
       theme: {
         background: "#0a0a0a",
         foreground: "#a3a3a3",
@@ -71,6 +72,15 @@ export function TerminalPanel({ output }: TerminalPanelProps) {
     };
   }, []);
 
+  // Wire onData callback for user input
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal || !onData) return;
+
+    const disposable = terminal.onData(onData);
+    return () => disposable.dispose();
+  }, [onData]);
+
   // Write output incrementally
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -93,7 +103,7 @@ export function TerminalPanel({ output }: TerminalPanelProps) {
   return (
     <div
       ref={containerRef}
-      className="w-full h-full bg-[#0a0a0a] p-2"
+      className="w-full h-full bg-[#0a0a0a] p-2 [&_.xterm]:!h-full [&_.xterm-viewport]:!h-full [&_.xterm-screen]:!h-full"
     />
   );
 }

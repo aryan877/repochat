@@ -105,14 +105,14 @@ export function FileExplorer({
   };
 
   return (
-    <div className="rounded-xl bg-[#111111] overflow-hidden my-3">
+    <div className="rounded-xl bg-[#0a0a0a] overflow-hidden my-3 flex flex-col gap-px">
       {/* Tool label */}
-      <div className="px-4 py-2">
-        <span className="text-[10px] font-mono text-[#444] uppercase tracking-widest">FileExplorer</span>
+      <div className="bg-[#161616] px-4 py-2.5">
+        <span className="text-[10px] font-mono text-[#555] uppercase tracking-widest">FileExplorer</span>
       </div>
 
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2.5">
+      <div className="bg-[#111111] flex items-center justify-between px-4 py-2.5">
         <span className="text-[13px] font-medium text-[#e5e5e5]">{repoName}</span>
         <div className="flex items-center gap-1.5 text-[#666]">
           <GitBranchIcon />
@@ -121,7 +121,7 @@ export function FileExplorer({
       </div>
 
       {/* Tree */}
-      <div className="py-1 max-h-[400px] overflow-y-auto">
+      <div className="bg-[#111111] py-1 max-h-[400px] overflow-y-auto">
         {tree.length > 0 ? (
           tree.map((node) => (
             <FileNodeComponent
@@ -140,7 +140,7 @@ export function FileExplorer({
 
       {/* Selected file path */}
       {selected && (
-        <div className="px-4 py-2 text-[12px] font-mono text-[#666] truncate">
+        <div className="bg-[#111111] px-4 py-2 text-[12px] font-mono text-[#666] truncate">
           {selected}
         </div>
       )}

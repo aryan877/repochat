@@ -177,19 +177,20 @@ export function CodeFlow({
   if (files.length === 0) return null;
 
   return (
-    <div className="rounded-xl bg-[#111111] overflow-hidden my-3">
+    <div className="rounded-xl bg-[#0a0a0a] overflow-hidden my-3 flex flex-col gap-px">
       {/* Tool label */}
-      <div className="px-5 py-2">
-        <span className="text-[10px] font-mono text-[#444] uppercase tracking-widest">CodeFlow</span>
+      <div className="bg-[#161616] px-5 py-2.5">
+        <span className="text-[10px] font-mono text-[#555] uppercase tracking-widest">CodeFlow</span>
       </div>
 
       {/* Header */}
-      <div className="px-5 py-3">
+      <div className="bg-[#111111] px-5 py-3">
         <h3 className="text-[14px] font-semibold text-[#e5e5e5]">{title}</h3>
       </div>
 
       {/* Graph */}
       <div
+        className="bg-[#111111]"
         style={{ height: Math.min(400, Math.max(200, Math.ceil(files.length / 3) * 120 + 100)) }}
       >
         <ReactFlow
@@ -220,7 +221,7 @@ export function CodeFlow({
       </div>
 
       {/* Legend */}
-      <div className="px-5 py-3 flex items-center gap-4 text-[10px] text-[#555]">
+      <div className="bg-[#111111] px-5 py-3 flex items-center gap-4 text-[10px] text-[#555]">
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded border border-[#dc2626] bg-[#450a0a]" />
           <span>Critical</span>

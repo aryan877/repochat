@@ -78,14 +78,14 @@ export function PRStatsChart({
   }));
 
   return (
-    <div className="rounded-xl bg-[#111111] overflow-hidden my-3">
+    <div className="rounded-xl bg-[#0a0a0a] overflow-hidden my-3 flex flex-col gap-px">
       {/* Tool label */}
-      <div className="px-5 py-2">
-        <span className="text-[10px] font-mono text-[#444] uppercase tracking-widest">PRStatsChart</span>
+      <div className="bg-[#161616] px-5 py-2.5">
+        <span className="text-[10px] font-mono text-[#555] uppercase tracking-widest">PRStatsChart</span>
       </div>
 
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3">
+      <div className="bg-[#111111] flex items-center justify-between px-5 py-3">
         <h3 className="text-[14px] font-semibold text-[#e5e5e5]">{title}</h3>
         <div className="flex gap-4 text-xs">
           <span className="font-semibold text-emerald-400">+{totalAdditions}</span>
@@ -94,7 +94,7 @@ export function PRStatsChart({
       </div>
 
       {/* Chart */}
-      <div className="p-5">
+      <div className="bg-[#111111] p-5">
         {chartType === "bar" ? (
           <ResponsiveContainer width="100%" height={Math.max(180, files.length * 32)}>
             <BarChart
@@ -157,7 +157,7 @@ export function PRStatsChart({
 
       {/* Pie legend */}
       {chartType === "pie" && files.length > 0 && (
-        <div className="px-5 pb-4 flex flex-wrap gap-x-4 gap-y-1">
+        <div className="bg-[#111111] px-5 pb-4 flex flex-wrap gap-x-4 gap-y-1">
           {files.map((f, i) => (
             <div key={f.filename} className="flex items-center gap-1.5 text-xs text-[#999]">
               <span

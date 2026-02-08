@@ -7,7 +7,7 @@ import { useLottie } from "lottie-react";
 import arrowAnimation from "@/arrow-animation.json";
 import { useRouter, useParams } from "next/navigation";
 import { useSelectedRepo } from "@/app/providers";
-import { SignedIn, UserButton, useUser } from "@clerk/nextjs";
+import { SignedIn, UserButton, useAuth, useUser } from "@clerk/nextjs";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import Link from "next/link";
@@ -269,6 +269,7 @@ const ArrowAnimation = () => {
 
 export default function ChatPage() {
   const { user, isLoaded } = useUser();
+  const { isSignedIn } = useAuth();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
 
@@ -297,6 +298,7 @@ export default function ChatPage() {
   if (
     !mounted ||
     !isLoaded ||
+    !isSignedIn ||
     !user ||
     githubStatus === undefined ||
     !githubStatus?.connected

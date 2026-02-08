@@ -12,9 +12,10 @@ export function ShaderBackground() {
         className="absolute inset-0"
         style={{
           background: [
-            "radial-gradient(ellipse at 50% 0%, #0a1628 0%, transparent 50%)",
-            "radial-gradient(ellipse at 80% 80%, #1a0a2e 0%, transparent 50%)",
-            "radial-gradient(ellipse at 20% 60%, #0a2a3a 0%, transparent 40%)",
+            "radial-gradient(ellipse at 30% 20%, #1a0a0a 0%, transparent 50%)",
+            "radial-gradient(ellipse at 80% 70%, #0a1a0a 0%, transparent 50%)",
+            "radial-gradient(ellipse at 20% 80%, #0a0a2a 0%, transparent 40%)",
+            "radial-gradient(ellipse at 70% 20%, #1a1a0a 0%, transparent 40%)",
           ].join(", "),
         }}
       />
@@ -23,8 +24,8 @@ export function ShaderBackground() {
         className="absolute inset-0 opacity-40 animate-aurora"
         style={{
           backgroundImage: [
-            "repeating-linear-gradient(100deg, #0a1628 0%, #0a1628 7%, transparent 10%, transparent 12%, #0a1628 16%)",
-            "repeating-linear-gradient(100deg, #1a0a2e 10%, #0a2a3a 15%, #0d1f3c 20%, #1a0a2e 25%, #0a1628 30%)",
+            "repeating-linear-gradient(100deg, #1a0a0a 0%, #1a0a0a 7%, transparent 10%, transparent 12%, #0a0a2a 16%)",
+            "repeating-linear-gradient(100deg, #0a1a0a 10%, #0a0a2a 15%, #1a1a0a 20%, #1a0a0a 25%, #0a1a0a 30%)",
           ].join(", "),
           backgroundSize: "300%, 200%",
           filter: "blur(30px)",

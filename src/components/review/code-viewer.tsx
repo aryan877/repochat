@@ -68,14 +68,14 @@ export function CodeViewer({
 
   return (
     <div className={`${isExpanded ? "fixed inset-4 z-50" : "my-3"}`}>
-      <div className={`rounded-xl bg-[#111111] overflow-hidden ${isExpanded ? "h-full flex flex-col" : ""}`}>
+      <div className={`rounded-xl bg-[#0a0a0a] overflow-hidden flex flex-col gap-px ${isExpanded ? "h-full" : ""}`}>
         {/* Tool label */}
-        <div className="px-4 py-2">
-          <span className="text-[10px] font-mono text-[#444] uppercase tracking-widest">CodeViewer</span>
+        <div className="bg-[#161616] px-4 py-2.5">
+          <span className="text-[10px] font-mono text-[#555] uppercase tracking-widest">CodeViewer</span>
         </div>
 
         {/* File header */}
-        <div className="flex items-center justify-between px-4 py-2.5">
+        <div className="bg-[#111111] flex items-center justify-between px-4 py-2.5">
           <div className="flex items-center gap-3 min-w-0">
             <div className="text-[#666] flex-shrink-0"><FileIcon /></div>
             <span className="text-[13px] font-mono text-[#ccc] truncate">{fileName}</span>
@@ -112,7 +112,7 @@ export function CodeViewer({
         </div>
 
         {/* Editor */}
-        <div className={`${isExpanded ? "flex-1" : "h-[300px]"}`}>
+        <div className={`bg-[#111111] ${isExpanded ? "flex-1" : "h-[300px]"}`}>
           <Editor
             height="100%"
             language={monacoLanguage}

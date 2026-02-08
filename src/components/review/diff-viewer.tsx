@@ -72,15 +72,15 @@ export function DiffViewer({
   const fileName = filePath.split("/").pop() || filePath;
 
   return (
-    <div className="rounded-xl bg-[#111111] overflow-hidden my-3">
+    <div className="rounded-xl bg-[#0a0a0a] overflow-hidden my-3 flex flex-col gap-px">
       {/* Tool label */}
-      <div className="px-4 py-2">
-        <span className="text-[10px] font-mono text-[#444] uppercase tracking-widest">DiffViewer</span>
+      <div className="bg-[#161616] px-4 py-2.5">
+        <span className="text-[10px] font-mono text-[#555] uppercase tracking-widest">DiffViewer</span>
       </div>
       {/* File header */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#161616] transition-colors"
+        className="bg-[#111111] w-full flex items-center gap-3 px-4 py-3 hover:bg-[#161616] transition-colors"
       >
         <ChevronIcon open={expanded} />
         <FileIcon />
@@ -96,7 +96,7 @@ export function DiffViewer({
 
       {/* Diff body */}
       {expanded && (
-        <div className="overflow-x-auto">
+        <div className="bg-[#111111] overflow-x-auto">
           <table className="w-full text-[12px] leading-[20px] font-mono border-collapse">
             <tbody>
               {diffLines.map((line, i) => {

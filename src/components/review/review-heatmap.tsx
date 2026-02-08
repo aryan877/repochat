@@ -84,14 +84,14 @@ export function ReviewHeatmap({
   if (files.length === 0) return null;
 
   return (
-    <div className="rounded-xl bg-[#111111] overflow-hidden my-3">
+    <div className="rounded-xl bg-[#0a0a0a] overflow-hidden my-3 flex flex-col gap-px">
       {/* Tool label */}
-      <div className="px-5 py-2">
-        <span className="text-[10px] font-mono text-[#444] uppercase tracking-widest">ReviewHeatmap</span>
+      <div className="bg-[#161616] px-5 py-2.5">
+        <span className="text-[10px] font-mono text-[#555] uppercase tracking-widest">ReviewHeatmap</span>
       </div>
 
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3">
+      <div className="bg-[#111111] flex items-center justify-between px-5 py-3">
         <h3 className="text-[14px] font-semibold text-[#e5e5e5]">{title}</h3>
         <span className="text-xs text-[#666]">
           {totalChanges} changes across {files.length} files
@@ -99,7 +99,7 @@ export function ReviewHeatmap({
       </div>
 
       {/* Grid */}
-      <div className="p-4">
+      <div className="bg-[#111111] p-4">
         <div className="grid gap-1.5" style={{
           gridTemplateColumns: `repeat(auto-fill, minmax(${files.length > 8 ? "100px" : "140px"}, 1fr))`,
         }}>
@@ -139,7 +139,7 @@ export function ReviewHeatmap({
       </div>
 
       {/* Legend */}
-      <div className="px-5 py-3 flex items-center gap-4 text-[10px] text-[#555]">
+      <div className="bg-[#111111] px-5 py-3 flex items-center gap-4 text-[10px] text-[#555]">
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-red-500/50" />
           <span>Critical</span>

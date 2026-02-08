@@ -6,6 +6,7 @@ import { useUser, SignInButton } from "@clerk/nextjs";
 import { ShaderBackground } from "./shader-background";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import Image from "next/image";
 import Link from "next/link";
 
 type Step = "signin" | "install" | "link" | "complete";
@@ -139,6 +140,14 @@ export function GitHubOnboarding({ onComplete, showBackButton }: { onComplete?: 
         )}
 
         <div className="text-center mb-8">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.05 }}
+            className="flex justify-center mb-3"
+          >
+            <Image src="/logo.svg" alt="RepoChat" width={48} height={48} className="rounded-xl" />
+          </motion.div>
           <motion.h1
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

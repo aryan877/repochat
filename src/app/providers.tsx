@@ -3,11 +3,19 @@
 import { components } from "@/lib/tambo";
 import { createGitHubTools } from "@/lib/tools";
 import { ClerkProvider, useAuth, useUser } from "@clerk/nextjs";
-import { TamboProvider, currentTimeContextHelper } from "@tambo-ai/react";
-import { TamboMcpProvider, MCPTransport } from "@tambo-ai/react/mcp";
+import { currentTimeContextHelper, TamboProvider } from "@tambo-ai/react";
+import { MCPTransport } from "@tambo-ai/react/mcp";
 import { ConvexReactClient, useAction, useQuery } from "convex/react";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
-import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { api } from "../../convex/_generated/api";
 
 // ── Selected Repo Context (persists across page navigation) ──
@@ -27,10 +35,12 @@ export function useSelectedRepo() {
 }
 
 function SelectedRepoProvider({ children }: { children: ReactNode }) {
-  const [selectedRepoName, setSelectedRepoNameRaw] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return localStorage.getItem("repochat:selectedRepo") || null;
-  });
+  const [selectedRepoName, setSelectedRepoNameRaw] = useState<string | null>(
+    () => {
+      if (typeof window === "undefined") return null;
+      return localStorage.getItem("repochat:selectedRepo") || null;
+    },
+  );
 
   const setSelectedRepoName = useCallback((name: string | null) => {
     setSelectedRepoNameRaw(name);
@@ -42,7 +52,9 @@ function SelectedRepoProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <SelectedRepoContext.Provider value={{ selectedRepoName, setSelectedRepoName }}>
+    <SelectedRepoContext.Provider
+      value={{ selectedRepoName, setSelectedRepoName }}
+    >
       {children}
     </SelectedRepoContext.Provider>
   );
@@ -98,10 +110,14 @@ function TamboProviderWithAuth({ children }: { children: ReactNode }) {
     return userMcpServers.map((server) => ({
       name: server.label,
       url: `${window.location.origin}/api/mcp-proxy?url=${encodeURIComponent(server.url)}`,
-      transport: server.transport === "sse" ? MCPTransport.SSE : MCPTransport.HTTP,
+      transport:
+        server.transport === "sse" ? MCPTransport.SSE : MCPTransport.HTTP,
       serverKey: server.provider,
       customHeaders: Object.fromEntries(
-        Object.entries(server.headers).filter(([, v]) => v != null) as [string, string][]
+        Object.entries(server.headers).filter(([, v]) => v != null) as [
+          string,
+          string,
+        ][],
       ),
     }));
   }, [userMcpServers]);
@@ -158,32 +174,18 @@ function TamboProviderWithAuth({ children }: { children: ReactNode }) {
     compareCommits,
   ]);
 
-  // Gate rendering based on auth state:
-  // 1. Auth still loading → show nothing (brief flash)
-  // 2. User signed out → render children WITHOUT TamboProvider so pages can
-  //    handle their own redirects (e.g. to /onboarding)
-  // 3. Signed in but token not yet fetched → show nothing (loading)
-  // 4. Signed in + token ready → render full TamboProvider tree
-  if (!isLoaded) {
-    return null;
-  }
-
-  if (!isSignedIn) {
-    return <>{children}</>;
-  }
-
-  if (!accessToken) {
-    return null;
-  }
+  // NEVER return null — Clerk resets isLoaded to false during sign-out which
+  // would unmount/remount the entire TamboProvider tree.
+  const ready = isLoaded && isSignedIn && !!accessToken;
 
   return (
     <TamboProvider
       apiKey={process.env.NEXT_PUBLIC_TAMBO_API_KEY || ""}
       tamboUrl={process.env.NEXT_PUBLIC_TAMBO_API_URL}
-      userToken={accessToken}
+      userToken={ready ? accessToken : undefined}
       components={components}
-      tools={tools}
-      mcpServers={mcpServers}
+      tools={ready ? tools : []}
+      mcpServers={ready ? mcpServers : undefined}
       autoGenerateThreadName={true}
       autoGenerateNameThreshold={3}
       contextHelpers={{
@@ -201,9 +203,7 @@ function TamboProviderWithAuth({ children }: { children: ReactNode }) {
         },
       }}
     >
-      <TamboMcpProvider>
-        {children}
-      </TamboMcpProvider>
+      {children}
     </TamboProvider>
   );
 }

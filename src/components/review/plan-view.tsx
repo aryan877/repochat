@@ -32,14 +32,14 @@ export function PlanView({
   const progress = steps.length > 0 ? (completedCount / steps.length) * 100 : 0;
 
   return (
-    <div className="rounded-xl bg-[#111111] overflow-hidden my-3">
+    <div className="rounded-xl bg-[#0a0a0a] overflow-hidden my-3 flex flex-col gap-px">
       {/* Tool label */}
-      <div className="px-5 py-2">
-        <span className="text-[10px] font-mono text-[#444] uppercase tracking-widest">PlanView</span>
+      <div className="bg-[#161616] px-5 py-2.5">
+        <span className="text-[10px] font-mono text-[#555] uppercase tracking-widest">PlanView</span>
       </div>
 
       {/* Header */}
-      <div className="px-5 pt-4 pb-3">
+      <div className="bg-[#111111] px-5 pt-4 pb-3">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-[14px] font-semibold text-[#e5e5e5]">{title}</h3>
           <span className="text-xs font-mono text-[#666]">{completedCount}/{steps.length}</span>
@@ -62,7 +62,7 @@ export function PlanView({
       </div>
 
       {/* Steps */}
-      <div>
+      <div className="bg-[#111111]">
         {steps.map((step, idx) => {
           const isCurrentStep = currentStep === idx;
           const isCompleted = step.status === "completed";
@@ -128,7 +128,7 @@ export function PlanView({
 
       {/* Completion footer */}
       {progress === 100 && (
-        <div className="px-5 py-3 bg-emerald-500/5">
+        <div className="bg-[#111111] px-5 py-3">
           <p className="text-[12px] text-emerald-400 font-medium">All steps completed</p>
         </div>
       )}

@@ -37,14 +37,14 @@ export function CodeExplainer({
   relatedConcepts,
 }: CodeExplainerProps) {
   return (
-    <div className="rounded-xl bg-[#111111] overflow-hidden my-3">
+    <div className="rounded-xl bg-[#0a0a0a] overflow-hidden my-3 flex flex-col gap-px">
       {/* Tool label */}
-      <div className="px-5 py-2">
-        <span className="text-[10px] font-mono text-[#444] uppercase tracking-widest">CodeExplainer</span>
+      <div className="bg-[#161616] px-5 py-2.5">
+        <span className="text-[10px] font-mono text-[#555] uppercase tracking-widest">CodeExplainer</span>
       </div>
 
       {/* Header */}
-      <div className="px-5 pt-4 pb-3">
+      <div className="bg-[#111111] px-5 pt-4 pb-3">
         <h3 className="text-[14px] font-semibold text-[#e5e5e5] leading-snug mb-1">{title}</h3>
         {(filePath || lineRange) && (
           <p className="text-[12px] text-[#666] font-mono mb-2">
@@ -55,7 +55,7 @@ export function CodeExplainer({
       </div>
 
       {/* Sections */}
-      <div>
+      <div className="bg-[#111111]">
         {sections.map((section, idx) => {
           const config = sectionTypeConfig[section.type || "detail"];
 
@@ -83,7 +83,7 @@ export function CodeExplainer({
 
       {/* Related concepts */}
       {relatedConcepts && relatedConcepts.length > 0 && (
-        <div className="px-5 py-3 bg-[#0a0a0a]/30">
+        <div className="bg-[#111111] px-5 py-3">
           <p className="text-[10px] uppercase tracking-wider text-[#444] font-medium mb-2">Related</p>
           <div className="flex flex-wrap gap-1.5">
             {relatedConcepts.map((concept) => (

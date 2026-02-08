@@ -61,13 +61,13 @@ export function SecurityAlert({
   const style = severityConfig[severity] || severityConfig.medium;
 
   return (
-    <div className={`rounded-xl ${style.bg} overflow-hidden my-3`}>
+    <div className={`rounded-xl bg-[#0a0a0a] overflow-hidden my-3 flex flex-col gap-px`}>
       {/* Tool label */}
-      <div className="px-5 py-2">
-        <span className="text-[10px] font-mono text-[#444] uppercase tracking-widest">SecurityAlert</span>
+      <div className={`bg-[#161616] px-5 py-2.5`}>
+        <span className="text-[10px] font-mono text-[#555] uppercase tracking-widest">SecurityAlert</span>
       </div>
       {/* Header */}
-      <div className="px-5 pt-4 pb-3">
+      <div className={`${style.bg} px-5 pt-4 pb-3`}>
         <div className="flex items-center gap-2.5 mb-2.5">
           <div className={`${style.text}`}>
             <ShieldIcon />
@@ -88,7 +88,7 @@ export function SecurityAlert({
       </div>
 
       {/* File location */}
-      <div className="px-5 py-2">
+      <div className="bg-[#111111] px-5 py-2">
         <span className="text-[12px] font-mono text-[#666]">
           {filePath}{lineNumber ? `:${lineNumber}` : ""}
         </span>
@@ -96,24 +96,26 @@ export function SecurityAlert({
 
       {/* Code snippet */}
       {codeSnippet && (
-        <div className="mx-5 mb-3 rounded-lg bg-[#0a0a0a] border border-[#1e1e1e] overflow-hidden">
-          <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#1e1e1e]">
-            <span className="text-[10px] uppercase tracking-wider text-[#444] font-medium">Vulnerable code</span>
-            <button
-              onClick={handleCopy}
-              className="inline-flex items-center gap-1 text-[11px] text-[#555] hover:text-[#aaa] transition-colors"
-            >
-              {copied ? <><CheckIcon /> Copied</> : <><CopyIcon /> Copy</>}
-            </button>
+        <div className="bg-[#111111] px-5 py-3">
+          <div className="rounded-lg bg-[#0a0a0a] border border-[#1e1e1e] overflow-hidden">
+            <div className="flex items-center justify-between px-3 py-1.5 border-b border-[#1e1e1e]">
+              <span className="text-[10px] uppercase tracking-wider text-[#444] font-medium">Vulnerable code</span>
+              <button
+                onClick={handleCopy}
+                className="inline-flex items-center gap-1 text-[11px] text-[#555] hover:text-[#aaa] transition-colors"
+              >
+                {copied ? <><CheckIcon /> Copied</> : <><CopyIcon /> Copy</>}
+              </button>
+            </div>
+            <pre className="px-3 py-2.5 text-[12px] font-mono text-[#bbb] overflow-x-auto leading-relaxed">
+              <code>{codeSnippet}</code>
+            </pre>
           </div>
-          <pre className="px-3 py-2.5 text-[12px] font-mono text-[#bbb] overflow-x-auto leading-relaxed">
-            <code>{codeSnippet}</code>
-          </pre>
         </div>
       )}
 
       {/* Recommendation */}
-      <div className="px-5 py-3 bg-[#0a0a0a]/30">
+      <div className="bg-[#111111] px-5 py-3">
         <p className="text-[10px] uppercase tracking-wider text-[#444] font-medium mb-1.5">Fix</p>
         <p className="text-[13px] text-[#bbb] leading-relaxed">{recommendation}</p>
       </div>

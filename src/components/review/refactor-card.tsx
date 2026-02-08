@@ -54,14 +54,14 @@ export function RefactorCard({
   const iStyle = impact ? impactConfig[impact] : null;
 
   return (
-    <div className="rounded-xl bg-[#111111] overflow-hidden my-3">
+    <div className="rounded-xl bg-[#0a0a0a] overflow-hidden my-3 flex flex-col gap-px">
       {/* Tool label */}
-      <div className="px-5 py-2">
-        <span className="text-[10px] font-mono text-[#444] uppercase tracking-widest">RefactorCard</span>
+      <div className="bg-[#161616] px-5 py-2.5">
+        <span className="text-[10px] font-mono text-[#555] uppercase tracking-widest">RefactorCard</span>
       </div>
 
       {/* Header */}
-      <div className="px-5 pt-4 pb-3">
+      <div className="bg-[#111111] px-5 pt-4 pb-3">
         <div className="flex items-center gap-2 mb-2.5">
           {complexity && (
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wide ${cStyle.bg} ${cStyle.text}`}>
@@ -80,14 +80,14 @@ export function RefactorCard({
       </div>
 
       {/* File location */}
-      <div className="px-5 py-2">
+      <div className="bg-[#111111] px-5 py-2">
         <span className="text-[12px] font-mono text-[#666]">
           {filePath}{lineStart ? `:${lineStart}` : ""}
         </span>
       </div>
 
       {/* Before / After code */}
-      <div className="grid md:grid-cols-2">
+      <div className="bg-[#111111] grid md:grid-cols-2">
         {/* Before */}
         <div className="md:border-r md:border-[#1e1e1e]">
           <div className="flex items-center justify-between px-4 py-2 bg-[#200a0a]/30">

@@ -66,13 +66,13 @@ export function PRSummary({
   const addPct = totalChanges > 0 ? (additions / totalChanges) * 100 : 50;
 
   return (
-    <div className="rounded-xl bg-[#111111] overflow-hidden">
+    <div className="rounded-xl bg-[#0a0a0a] overflow-hidden flex flex-col gap-px">
       {/* Tool label */}
-      <div className="px-5 py-2">
-        <span className="text-[10px] font-mono text-[#444] uppercase tracking-widest">PRSummary</span>
+      <div className="bg-[#161616] px-5 py-2.5">
+        <span className="text-[10px] font-mono text-[#555] uppercase tracking-widest">PRSummary</span>
       </div>
       {/* Header */}
-      <div className="px-5 pt-5 pb-4">
+      <div className="bg-[#111111] px-5 pt-5 pb-4">
         <div className="flex items-center gap-2.5 mb-3">
           <span className="text-xs font-mono text-[#555]">#{number}</span>
           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${stateStyle.bg} ${stateStyle.text}`}>
@@ -91,7 +91,7 @@ export function PRSummary({
       </div>
 
       {/* Stats bar */}
-      <div className="px-5 py-3 flex items-center gap-5">
+      <div className="bg-[#111111] px-5 py-3 flex items-center gap-5">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
             <span className="text-sm font-semibold text-emerald-400">+{additions.toLocaleString()}</span>
@@ -115,13 +115,13 @@ export function PRSummary({
 
       {/* Description */}
       {description && (
-        <div className="px-5 py-3">
+        <div className="bg-[#111111] px-5 py-3">
           <p className="text-[13px] text-[#999] leading-relaxed whitespace-pre-wrap">{description}</p>
         </div>
       )}
 
       {/* Footer */}
-      <div className="px-5 py-3 flex items-center justify-between">
+      <div className="bg-[#111111] px-5 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2 text-xs text-[#555]">
           <span className="font-medium text-[#888]">{author}</span>
           {formattedDate && (

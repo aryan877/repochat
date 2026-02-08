@@ -48,14 +48,14 @@ export function CommitCard({
   const addPct = totalChanges > 0 ? (additions / totalChanges) * 100 : 50;
 
   return (
-    <div className="rounded-xl bg-[#111111] overflow-hidden my-3">
+    <div className="rounded-xl bg-[#0a0a0a] overflow-hidden my-3 flex flex-col gap-px">
       {/* Tool label */}
-      <div className="px-5 py-2">
-        <span className="text-[10px] font-mono text-[#444] uppercase tracking-widest">CommitCard</span>
+      <div className="bg-[#161616] px-5 py-2.5">
+        <span className="text-[10px] font-mono text-[#555] uppercase tracking-widest">CommitCard</span>
       </div>
 
       {/* Header */}
-      <div className="px-5 pt-4 pb-3">
+      <div className="bg-[#111111] px-5 pt-4 pb-3">
         <div className="flex items-center gap-2.5 mb-3">
           <div className="text-[#666]">
             <GitCommitIcon />
@@ -75,7 +75,7 @@ export function CommitCard({
       </div>
 
       {/* Stats bar */}
-      <div className="px-5 py-3 flex items-center gap-5">
+      <div className="bg-[#111111] px-5 py-3 flex items-center gap-5">
         <div className="flex items-center gap-4">
           <span className="text-sm font-semibold text-emerald-400">+{additions.toLocaleString()}</span>
           <span className="text-sm font-semibold text-red-400">-{deletions.toLocaleString()}</span>
@@ -90,7 +90,7 @@ export function CommitCard({
       </div>
 
       {/* Footer */}
-      <div className="px-5 py-3 flex items-center justify-between">
+      <div className="bg-[#111111] px-5 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2 text-xs text-[#555]">
           {authorAvatar && (
             <img src={authorAvatar} alt={author} className="w-4 h-4 rounded-full" />

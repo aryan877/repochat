@@ -247,7 +247,7 @@ function ReviewChecklistBase({
 
 export const ReviewChecklist = withInteractable(ReviewChecklistBase, {
   componentName: "ReviewChecklist",
-  description: `Pre-placed interactable checklist for tracking code review findings. When reviewing a PR, UPDATE this component's state with all findings from the diff. Each finding needs: id, type (security/bug/refactor/style/performance), severity (critical/high/medium/low), title, description, filePath, lineNumber, and resolved: false. Also set status to "in_progress" when starting a review and "completed" when done.`,
+  description: `Side-panel checklist for code review findings. When reviewing a PR, call the update_component_state tool for this component to populate findings. Each finding: { id, type, severity, title, filePath, lineNumber, resolved: false }. Set status to "in_progress" then "completed".`,
   propsSchema: ReviewChecklistSchema,
   stateSchema: ReviewChecklistStateSchema,
 });

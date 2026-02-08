@@ -200,6 +200,9 @@ function TamboProviderWithAuth({ children }: { children: ReactNode }) {
             servers: userMcpServers.map((s) => s.label),
           };
         },
+        interactableToolUsage: () => ({
+          hint: "To update interactable components, use tools named update_component_state_<componentId>. When reviewing a PR, update the ReviewChecklist with findings.",
+        }),
       }}
     >
       {children}

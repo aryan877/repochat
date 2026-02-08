@@ -58,12 +58,14 @@ const severityColors: Record<string, { bg: string; border: string; glow: string 
   none: { bg: "#0a0a0a", border: "#262626", glow: "none" },
 };
 
-function getFilename(path: string): string {
+function getFilename(path?: string): string {
+  if (!path) return "unknown";
   const parts = path.split("/");
   return parts[parts.length - 1];
 }
 
-function getDirectory(path: string): string {
+function getDirectory(path?: string): string {
+  if (!path) return "";
   const parts = path.split("/");
   if (parts.length <= 1) return "";
   return parts.slice(0, -1).join("/");

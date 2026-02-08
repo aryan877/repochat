@@ -149,10 +149,7 @@ export function PRSummary({
 
 export const tamboRegistration = {
   name: "PRSummary",
-  description: `MANDATORY: Always render this component when reviewing a pull request.
-Shows PR metadata: title, author, state (open/closed/merged), branches, additions/deletions, file changes.
-IMPORTANT: When rendering PRSummary, you MUST ALSO update the pre-placed ReviewChecklist interactable with ALL findings from the diff.
-TRIGGER: "Review PR #X", "What's in this PR?", "Analyze pull request"`,
+  description: `Render when reviewing a PR. Shows title, author, state, branches, additions/deletions, file count. After rendering, also update the ReviewChecklist interactable with findings.`,
   component: PRSummary,
   propsSchema: prSummarySchema,
 };

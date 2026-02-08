@@ -4,7 +4,6 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import type { ViewMode } from "./mode-tabs";
 import { PRSelector } from "./pr-selector";
-import { ReviewChecklist } from "./review/review-checklist";
 import { DiffViewer } from "./review/diff-viewer";
 import { CodeViewer } from "./review/code-viewer";
 import { FileExplorer } from "./review/file-explorer";
@@ -153,16 +152,6 @@ export function ContentPanel({
               onPRChange={onPRChange}
               isLoadingPRs={isLoadingPRs}
             />
-
-            {/* Review Checklist (Interactable) */}
-            {selectedPR && (
-              <ReviewChecklist
-                prNumber={selectedPR.number}
-                prTitle={selectedPR.title}
-                findings={[]}
-                status="pending"
-              />
-            )}
 
             {/* File Changes / Diffs */}
             {selectedPR && fileChanges.length > 0 && (

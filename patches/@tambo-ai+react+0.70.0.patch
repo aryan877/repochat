@@ -11,22 +11,51 @@ index b8ae67d..00357d2 100644
      }, [componentId, interactableState]);
      // For editable fields that are set from a prop to allow streaming updates, don't overwrite a fetched state value set from the thread message with prop value on initial load.
 diff --git a/node_modules/@tambo-ai/react/dist/providers/tambo-interactable-provider.js b/node_modules/@tambo-ai/react/dist/providers/tambo-interactable-provider.js
-index 219c682..ed339fd 100644
+index 219c682..3ee9a66 100644
 --- a/node_modules/@tambo-ai/react/dist/providers/tambo-interactable-provider.js
 +++ b/node_modules/@tambo-ai/react/dist/providers/tambo-interactable-provider.js
-@@ -214,19 +214,27 @@ const TamboInteractableProvider = ({ children, }) => {
+@@ -186,10 +186,11 @@ const TamboInteractableProvider = ({ children, }) => {
+             return `Warning: No props provided for component with ID ${id}.`;
+         }
+         setInteractableComponents((prev) => {
+-            const component = prev.find((c) => c.id === id);
++            const component = resolveComponent(prev, id);
+             if (!component) {
+                 return prev;
+             }
++            const matchedId = component.id;
+             // Compare props shallowly
+             const propsChanged = Object.entries(newProps).some(([key, value]) => {
+                 return component.props[key] !== value;
+@@ -202,31 +203,39 @@ const TamboInteractableProvider = ({ children, }) => {
+                 ...component,
+                 props: { ...component.props, ...newProps },
+             };
+-            const updatedComponents = [...prev];
+-            const idx = prev.findIndex((c) => c.id === id);
+-            updatedComponents[idx] = updated;
+-            return updatedComponents;
++            return prev.map((c) => (c.id === matchedId ? updated : c));
+         });
+         return "Updated successfully";
+     }, []);
++    // Helper: resolve component by exact ID first, then fallback to name prefix
++    const resolveComponent = (0, react_1.useCallback)((components, componentId) => {
++        let component = components.find((c) => c.id === componentId);
++        if (!component) {
++            const namePrefix = componentId.replace(/-[a-z0-9]+$/, '');
++            component = components.find((c) => c.name === namePrefix);
++        }
++        return component ?? null;
++    }, []);
+     const updateInteractableComponentState = (0, react_1.useCallback)((componentId, newState) => {
+         if (!newState || Object.keys(newState).length === 0) {
              return `Warning: No state values provided for component with ID ${componentId}.`;
          }
          setInteractableComponents((components = []) => {
 -            const component = components.find((c) => c.id === componentId);
 -            if (!component)
-+            let component = components.find((c) => c.id === componentId);
-+            // Fallback: if exact ID not found (stale tool after Strict Mode remount),
-+            // match by name prefix (e.g. "ReviewChecklist-qyr" → find "ReviewChecklist-n7l")
-+            if (!component) {
-+                const namePrefix = componentId.replace(/-[a-z0-9]+$/, '');
-+                component = components.find((c) => c.name === namePrefix);
-+            }
++            const component = resolveComponent(components, componentId);
 +            if (!component) {
                  return components;
 +            }
@@ -47,6 +76,58 @@ index 219c682..ed339fd 100644
          });
          return "Updated successfully";
      }, []);
+@@ -338,7 +347,12 @@ const TamboInteractableProvider = ({ children, }) => {
+         setInteractableComponents((prev) => prev.filter((c) => c.id !== id));
+     }, []);
+     const getInteractableComponent = (0, react_1.useCallback)((id) => {
+-        return interactableComponents.find((c) => c.id === id);
++        let component = interactableComponents.find((c) => c.id === id);
++        if (!component) {
++            const namePrefix = id.replace(/-[a-z0-9]+$/, '');
++            component = interactableComponents.find((c) => c.name === namePrefix);
++        }
++        return component;
+     }, [interactableComponents]);
+     const getInteractableComponentsByName = (0, react_1.useCallback)((componentName) => {
+         return interactableComponents.filter((c) => c.name === componentName);
+@@ -348,11 +362,12 @@ const TamboInteractableProvider = ({ children, }) => {
+     }, []);
+     const setInteractableStateValue = (0, react_1.useCallback)((componentId, key, value) => {
+         setInteractableComponents((prev) => {
+-            const component = prev.find((c) => c.id === componentId);
++            const component = resolveComponent(prev, componentId);
+             if (!component) {
+                 console.warn(`Tried to update state for component ${componentId} but it was not found.`);
+                 return prev;
+             }
++            const matchedId = component.id;
+             const updated = {
+                 ...component,
+                 state: {
+@@ -360,17 +375,15 @@ const TamboInteractableProvider = ({ children, }) => {
+                     [key]: value,
+                 },
+             };
+-            const updatedComponents = prev.map((component) => {
+-                if (component.id === componentId) {
+-                    return updated;
+-                }
+-                return component;
+-            });
+-            return updatedComponents;
++            return prev.map((c) => (c.id === matchedId ? updated : c));
+         });
+     }, []);
+     const getInteractableComponentState = (0, react_1.useCallback)((componentId) => {
+-        const component = interactableComponents.find((c) => c.id === componentId);
++        let component = interactableComponents.find((c) => c.id === componentId);
++        if (!component) {
++            const namePrefix = componentId.replace(/-[a-z0-9]+$/, '');
++            component = interactableComponents.find((c) => c.name === namePrefix);
++        }
+         return component?.state;
+     }, [interactableComponents]);
+     const setInteractableSelected = (0, react_1.useCallback)((componentId, isSelected) => {
 diff --git a/node_modules/@tambo-ai/react/esm/hoc/with-tambo-interactable.js b/node_modules/@tambo-ai/react/esm/hoc/with-tambo-interactable.js
 index fb5e50f..06f5ed6 100644
 --- a/node_modules/@tambo-ai/react/esm/hoc/with-tambo-interactable.js
@@ -158,22 +239,51 @@ index d82e528..7e496df 100644
      }, [componentId, interactableState]);
      // For editable fields that are set from a prop to allow streaming updates, don't overwrite a fetched state value set from the thread message with prop value on initial load.
 diff --git a/node_modules/@tambo-ai/react/esm/providers/tambo-interactable-provider.js b/node_modules/@tambo-ai/react/esm/providers/tambo-interactable-provider.js
-index a8c9e54..ced6615 100644
+index a8c9e54..c031d2a 100644
 --- a/node_modules/@tambo-ai/react/esm/providers/tambo-interactable-provider.js
 +++ b/node_modules/@tambo-ai/react/esm/providers/tambo-interactable-provider.js
-@@ -178,19 +178,27 @@ export const TamboInteractableProvider = ({ children, }) => {
+@@ -150,10 +150,11 @@ export const TamboInteractableProvider = ({ children, }) => {
+             return `Warning: No props provided for component with ID ${id}.`;
+         }
+         setInteractableComponents((prev) => {
+-            const component = prev.find((c) => c.id === id);
++            const component = resolveComponent(prev, id);
+             if (!component) {
+                 return prev;
+             }
++            const matchedId = component.id;
+             // Compare props shallowly
+             const propsChanged = Object.entries(newProps).some(([key, value]) => {
+                 return component.props[key] !== value;
+@@ -166,31 +167,39 @@ export const TamboInteractableProvider = ({ children, }) => {
+                 ...component,
+                 props: { ...component.props, ...newProps },
+             };
+-            const updatedComponents = [...prev];
+-            const idx = prev.findIndex((c) => c.id === id);
+-            updatedComponents[idx] = updated;
+-            return updatedComponents;
++            return prev.map((c) => (c.id === matchedId ? updated : c));
+         });
+         return "Updated successfully";
+     }, []);
++    // Helper: resolve component by exact ID first, then fallback to name prefix
++    const resolveComponent = useCallback((components, componentId) => {
++        let component = components.find((c) => c.id === componentId);
++        if (!component) {
++            const namePrefix = componentId.replace(/-[a-z0-9]+$/, '');
++            component = components.find((c) => c.name === namePrefix);
++        }
++        return component ?? null;
++    }, []);
+     const updateInteractableComponentState = useCallback((componentId, newState) => {
+         if (!newState || Object.keys(newState).length === 0) {
              return `Warning: No state values provided for component with ID ${componentId}.`;
          }
          setInteractableComponents((components = []) => {
 -            const component = components.find((c) => c.id === componentId);
 -            if (!component)
-+            let component = components.find((c) => c.id === componentId);
-+            // Fallback: if exact ID not found (stale tool after Strict Mode remount),
-+            // match by name prefix (e.g. "ReviewChecklist-qyr" → find "ReviewChecklist-n7l")
-+            if (!component) {
-+                const namePrefix = componentId.replace(/-[a-z0-9]+$/, '');
-+                component = components.find((c) => c.name === namePrefix);
-+            }
++            const component = resolveComponent(components, componentId);
 +            if (!component) {
                  return components;
 +            }
@@ -194,3 +304,55 @@ index a8c9e54..ced6615 100644
          });
          return "Updated successfully";
      }, []);
+@@ -302,7 +311,12 @@ export const TamboInteractableProvider = ({ children, }) => {
+         setInteractableComponents((prev) => prev.filter((c) => c.id !== id));
+     }, []);
+     const getInteractableComponent = useCallback((id) => {
+-        return interactableComponents.find((c) => c.id === id);
++        let component = interactableComponents.find((c) => c.id === id);
++        if (!component) {
++            const namePrefix = id.replace(/-[a-z0-9]+$/, '');
++            component = interactableComponents.find((c) => c.name === namePrefix);
++        }
++        return component;
+     }, [interactableComponents]);
+     const getInteractableComponentsByName = useCallback((componentName) => {
+         return interactableComponents.filter((c) => c.name === componentName);
+@@ -312,11 +326,12 @@ export const TamboInteractableProvider = ({ children, }) => {
+     }, []);
+     const setInteractableStateValue = useCallback((componentId, key, value) => {
+         setInteractableComponents((prev) => {
+-            const component = prev.find((c) => c.id === componentId);
++            const component = resolveComponent(prev, componentId);
+             if (!component) {
+                 console.warn(`Tried to update state for component ${componentId} but it was not found.`);
+                 return prev;
+             }
++            const matchedId = component.id;
+             const updated = {
+                 ...component,
+                 state: {
+@@ -324,17 +339,15 @@ export const TamboInteractableProvider = ({ children, }) => {
+                     [key]: value,
+                 },
+             };
+-            const updatedComponents = prev.map((component) => {
+-                if (component.id === componentId) {
+-                    return updated;
+-                }
+-                return component;
+-            });
+-            return updatedComponents;
++            return prev.map((c) => (c.id === matchedId ? updated : c));
+         });
+     }, []);
+     const getInteractableComponentState = useCallback((componentId) => {
+-        const component = interactableComponents.find((c) => c.id === componentId);
++        let component = interactableComponents.find((c) => c.id === componentId);
++        if (!component) {
++            const namePrefix = componentId.replace(/-[a-z0-9]+$/, '');
++            component = interactableComponents.find((c) => c.name === namePrefix);
++        }
+         return component?.state;
+     }, [interactableComponents]);
+     const setInteractableSelected = useCallback((componentId, isSelected) => {

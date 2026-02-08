@@ -493,8 +493,6 @@ const MessageInputInternal = React.forwardRef<
       // Clear any previous errors
       setSubmitError(null);
       setImageError(null);
-      setDisplayValue("");
-      storeValueInSessionStorage(thread.id);
       setIsSubmitting(true);
 
       // Extract resource names directly from editor at submit time to ensure we have the latest
@@ -507,12 +505,16 @@ const MessageInputInternal = React.forwardRef<
 
       const imageIdsAtSubmitTime = images.map((image) => image.id);
 
+      // Clear input immediately before awaiting stream
+      setValue("");
+      setDisplayValue("");
+      storeValueInSessionStorage(thread.id);
+
       try {
         await submit({
           streamResponse: true,
           resourceNames: latestResourceNames,
         });
-        setValue("");
         // Clear only the images that were staged when submission started so
         // any images added while the request was in-flight are preserved.
         if (imageIdsAtSubmitTime.length > 0) {
@@ -524,6 +526,7 @@ const MessageInputInternal = React.forwardRef<
         }, 0);
       } catch (error) {
         console.error("Failed to submit message:", error);
+        setValue(value);
         setDisplayValue(value);
         // On submit failure, also clear image error
         setImageError(null);

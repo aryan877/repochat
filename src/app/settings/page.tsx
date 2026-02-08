@@ -92,6 +92,42 @@ export default function SettingsPage() {
     user?.id ? { clerkId: user.id } : "skip"
   );
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (isLoaded && !user) {
+      router.push("/onboarding");
+    } else if (isLoaded && user && githubStatus !== undefined && !githubStatus?.connected) {
+      router.push("/onboarding");
+    }
+  }, [isLoaded, user, githubStatus, router]);
+
+  if (!mounted || !isLoaded || !user || githubStatus === undefined) {
+    return (
+      <div className="min-h-screen bg-[#131314] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <svg className="animate-spin w-5 h-5 text-[#52525b]" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.2" />
+            <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </div>
+      </div>
+    );
+  }
+
+  return <SettingsPageInner />;
+}
+
+function SettingsPageInner() {
+  const { user } = useUser();
+
+  const githubStatus = useQuery(
+    api.users.getGitHubStatus,
+    user?.id ? { clerkId: user.id } : "skip"
+  );
+
   const connectedRepos = useQuery(
     api.users.getConnectedRepos,
     user?.id ? { clerkId: user.id } : "skip"
@@ -160,18 +196,6 @@ export default function SettingsPage() {
     }
   }, [removeMcpServer]);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (isLoaded && !user) {
-      router.push("/onboarding");
-    } else if (isLoaded && user && githubStatus !== undefined && !githubStatus?.connected) {
-      router.push("/onboarding");
-    }
-  }, [isLoaded, user, githubStatus, router]);
-
   const handleToggleAutoReview = async (repoId: Id<"repos">, currentValue: boolean) => {
     try {
       await updateRepoSettings({ repoId, autoReview: !currentValue });
@@ -179,19 +203,6 @@ export default function SettingsPage() {
       console.error("Failed to update repo settings:", error);
     }
   };
-
-  if (!mounted || !isLoaded || !user || githubStatus === undefined) {
-    return (
-      <div className="min-h-screen bg-[#131314] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <svg className="animate-spin w-5 h-5 text-[#52525b]" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.2" />
-            <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-        </div>
-      </div>
-    );
-  }
 
   const githubAppSlug = process.env.NEXT_PUBLIC_GITHUB_APP_SLUG || "repochat-dev";
 

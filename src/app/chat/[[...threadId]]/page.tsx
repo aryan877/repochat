@@ -268,13 +268,52 @@ const ArrowAnimation = () => {
 };
 
 export default function ChatPage() {
+  const { user, isLoaded } = useUser();
+  const router = useRouter();
+  const [mounted, setMounted] = useState(false);
+
+  const githubStatus = useQuery(
+    api.users.getGitHubStatus,
+    user?.id ? { clerkId: user.id } : "skip",
+  );
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (isLoaded && !user) {
+      router.push("/onboarding");
+    } else if (
+      isLoaded &&
+      user &&
+      githubStatus !== undefined &&
+      !githubStatus?.connected
+    ) {
+      router.push("/onboarding");
+    }
+  }, [isLoaded, user, githubStatus, router]);
+
+  if (
+    !mounted ||
+    !isLoaded ||
+    !user ||
+    githubStatus === undefined ||
+    !githubStatus?.connected
+  ) {
+    return <Spinner />;
+  }
+
+  return <ChatPageInner />;
+}
+
+function ChatPageInner() {
   const router = useRouter();
   const params = useParams<{ threadId?: string[] }>();
   const urlThreadId = params.threadId?.[0];
 
-  const { user, isLoaded } = useUser();
+  const { user } = useUser();
   const { selectedRepoName: selectedRepo, setSelectedRepoName } = useSelectedRepo();
-  const [mounted, setMounted] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mode, setMode] = useState<ViewMode>("chat");
   const [repoDropdownOpen, setRepoDropdownOpen] = useState(false);
@@ -444,23 +483,6 @@ export default function ChatPage() {
   }, [selectedRepo, connectedRepos]) as Id<"repos"> | null;
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (isLoaded && !user) {
-      router.push("/onboarding");
-    } else if (
-      isLoaded &&
-      user &&
-      githubStatus !== undefined &&
-      !githubStatus?.connected
-    ) {
-      router.push("/onboarding");
-    }
-  }, [isLoaded, user, githubStatus, router]);
-
-  useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth >= 768) {
         setSidebarOpen(false);
@@ -484,16 +506,6 @@ export default function ChatPage() {
       };
     });
   }, [selectedRepo, connectedRepos, addContextHelper]);
-
-  if (
-    !mounted ||
-    !isLoaded ||
-    !user ||
-    githubStatus === undefined ||
-    !githubStatus?.connected
-  ) {
-    return <Spinner />;
-  }
 
   const handleRepoSelect = (
     repo: { _id: Id<"repos">; name: string } | null,

@@ -158,14 +158,20 @@ function TamboProviderWithAuth({ children }: { children: ReactNode }) {
     compareCommits,
   ]);
 
-  // Wait for the Clerk token before mounting TamboProvider.
-  // The Tambo SDK exchanges this token for a session token on mount via
-  // useTamboSessionToken (enabled: !!userToken). If we render TamboProvider
-  // before the token is ready, the thread list query fires without auth and
-  // returns 0 results. Its query key ([threads, projectId, contextKey]) does
-  // not include the token, so it never automatically re-fires when the token
-  // arrives later. By deferring the mount we ensure the OAuth exchange happens
-  // before any data queries, and the thread list loads correctly on first try.
+  // Gate rendering based on auth state:
+  // 1. Auth still loading → show nothing (brief flash)
+  // 2. User signed out → render children WITHOUT TamboProvider so pages can
+  //    handle their own redirects (e.g. to /onboarding)
+  // 3. Signed in but token not yet fetched → show nothing (loading)
+  // 4. Signed in + token ready → render full TamboProvider tree
+  if (!isLoaded) {
+    return null;
+  }
+
+  if (!isSignedIn) {
+    return <>{children}</>;
+  }
+
   if (!accessToken) {
     return null;
   }

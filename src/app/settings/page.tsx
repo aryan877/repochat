@@ -188,7 +188,9 @@ function SettingsPageInner() {
     }
   }, [user?.id, mcpTemplate, mcpFields, addMcpServer]);
 
-  const handleRemoveMcpServer = useCallback(async (id: Id<"userMcpServers">) => {
+  const handleRemoveMcpServer = useCallback(async (id: Id<"userMcpServers">, label: string) => {
+    if (!confirm(`Remove "${label}" MCP server?`)) return;
+
     try {
       await removeMcpServer({ id });
     } catch (error) {
@@ -454,7 +456,7 @@ function SettingsPageInner() {
                             </span>
                           )}
                           <button
-                            onClick={() => handleRemoveMcpServer(server._id)}
+                            onClick={() => handleRemoveMcpServer(server._id, server.label)}
                             className="p-1.5 text-[#52525b] hover:text-[#ef4444] transition-colors"
                             title="Remove"
                           >

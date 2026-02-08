@@ -32,7 +32,7 @@ Both indexing and review run as `@convex-dev/workflow` durable workflows. Patter
 Retry: 3 attempts, exponential backoff (1s/2s/4s), maxParallelism 10.
 
 ### MCP integrations
-Users connect their own services (Supabase, etc.) from Settings. Configs in Convex, browser connects directly to MCP servers via HTTP. Fully reactive — `mcpServers` prop on `TamboProvider` triggers auto-reconnect on change.
+Users connect their own services (Supabase, etc.) from Settings. Configs stored in Convex, loaded reactively via `useQuery`. URLs are rewritten through `/api/mcp-proxy` (a Next.js API route) to bypass CORS — the proxy buffers JSON responses and streams SSE. `mcpServers` prop on `TamboProvider` triggers auto-reconnect on change. Settings page shows real connection status via `useTamboMcpServers()` hook (connected / connecting / error).
 
 ### Generative UI
 12 components the AI renders contextually (PRSummary, SecurityAlert, DiffViewer, CodeFlow, ReviewHeatmap, etc.). ReviewChecklist uses `withInteractable` for bidirectional state sync between AI and user.
@@ -57,6 +57,6 @@ These are separate systems. Push webhooks update `codeChunks` only, not `files`.
 ## Don't
 - Create wrapper types when Octokit/Convex types exist
 - Transform API responses in Convex — return full data, shape in frontend
-- Route MCP through the backend — it's client-side by design
+- Skip the MCP proxy — external MCP servers (Supabase, etc.) block browser CORS, so `/api/mcp-proxy` is required
 - Use `require("tree-sitter-wasms")` directly — main entry is native addon, use `/package.json`
 - Add verbose comments to Convex files

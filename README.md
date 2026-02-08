@@ -94,7 +94,7 @@ All posted back to GitHub as a proper PR review with inline comments.
  ┌──────────────────┐ ┌────────────────────────┐
  │  MCP Servers      │ │  Tambo API (self-host)  │
  │  Supabase, etc.   │ │  tambo-api.aryankumar   │
- │  HTTP · per-user  │ │  .dev                   │
+ │  Proxied via API  │ │  .dev                   │
  └──────────────────┘ │  NestJS + Postgres       │
                       │  Caddy auto-TLS          │
                       └────────────────────────┘
@@ -203,7 +203,7 @@ Users connect MCP servers from Settings. The config is stored in Convex and load
 </TamboProvider>
 ```
 
-The browser connects directly to the MCP server over HTTP. No backend proxy. Add or remove a server and Tambo auto-connects or disconnects. The AI discovers new tools instantly. Someone connects their Supabase, types "show me my users table", and the AI runs the SQL query right there in chat.
+Requests are routed through a same-origin Next.js API proxy (`/api/mcp-proxy`) to avoid CORS restrictions from endpoints like Supabase MCP. Add or remove a server and Tambo auto-connects or disconnects. The AI discovers new tools instantly. Someone connects their Supabase, types "show me my users table", and the AI runs the SQL query right there in chat.
 
 ### Generation stages
 
@@ -405,14 +405,16 @@ PR opened/updated (webhook) or user asks in chat
 User adds MCP server in Settings
   → Config saved to Convex (userMcpServers table)
   → providers.tsx loads via useQuery (reactive)
+  → URLs rewritten to /api/mcp-proxy?url=<encoded target>
   → Passed as mcpServers prop to TamboProvider
-  → Tambo's TamboMcpProvider connects via HTTP from browser
+  → Tambo's TamboMcpProvider connects via StreamableHTTP
+  → Next.js API route proxies requests server-side (bypasses CORS)
   → Tools auto-discovered and registered
   → AI can call them during conversation
   → Changing/removing servers auto-disconnects
 ```
 
-Convex stores the config. Browser connects directly. No proxy.
+Convex stores the config. Browser sends requests to a same-origin Next.js API proxy (`/api/mcp-proxy`), which forwards them server-side to the real MCP endpoint. This avoids CORS issues with endpoints like Supabase MCP that don't return `Access-Control-Allow-Origin` for browser origins. JSON responses are buffered; SSE streams are piped through.
 
 </details>
 
@@ -454,6 +456,7 @@ repochat/
 ├── src/
 │   ├── app/
 │   │   ├── providers.tsx       # Tambo + MCP + Clerk + Convex
+│   │   ├── api/mcp-proxy/      # CORS proxy for MCP servers
 │   │   ├── chat/               # Main chat interface
 │   │   ├── settings/           # MCP integrations + repo config
 │   │   └── docs/               # Documentation page

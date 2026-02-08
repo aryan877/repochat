@@ -97,7 +97,7 @@ function TamboProviderWithAuth({ children }: { children: ReactNode }) {
     if (!userMcpServers || userMcpServers.length === 0) return undefined;
     return userMcpServers.map((server) => ({
       name: server.label,
-      url: server.url,
+      url: `${window.location.origin}/api/mcp-proxy?url=${encodeURIComponent(server.url)}`,
       transport: server.transport === "sse" ? MCPTransport.SSE : MCPTransport.HTTP,
       serverKey: server.provider,
       customHeaders: Object.fromEntries(

@@ -247,18 +247,9 @@ function ReviewChecklistBase({
 
 export const ReviewChecklist = withInteractable(ReviewChecklistBase, {
   componentName: "ReviewChecklist",
-  description: "Checklist tracking code review findings. AI adds items, user toggles resolved.",
+  description: `Pre-placed interactable checklist for tracking code review findings. When reviewing a PR, UPDATE this component's state with all findings from the diff. Each finding needs: id, type (security/bug/refactor/style/performance), severity (critical/high/medium/low), title, description, filePath, lineNumber, and resolved: false. Also set status to "in_progress" when starting a review and "completed" when done.`,
   propsSchema: ReviewChecklistSchema,
   stateSchema: ReviewChecklistStateSchema,
 });
 
 export default ReviewChecklist;
-
-export const tamboRegistration = {
-  name: "ReviewChecklist",
-  description: `Render to track code review findings as a checklist. Shows grouped findings by type
-(security/bug/refactor/style/performance) with severity levels and resolution toggles. User can mark items resolved.
-TRIGGER: After reviewing a PR, always render this with all discovered findings. Include security issues, bugs, refactoring opportunities, style issues, and performance concerns.`,
-  component: ReviewChecklist,
-  propsSchema: ReviewChecklistSchema,
-};

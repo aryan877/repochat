@@ -73,7 +73,6 @@ function TamboProviderWithAuth({ children }: { children: ReactNode }) {
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const clerkId = user?.id ?? "";
 
-  // Fetch Clerk token for Tambo authentication, refresh before expiry
   const [accessToken, setAccessToken] = useState<string | undefined>();
 
   useEffect(() => {
@@ -83,14 +82,14 @@ function TamboProviderWithAuth({ children }: { children: ReactNode }) {
     }
 
     async function fetchToken() {
-      const token = await getToken();
+      const token = await getToken({ template: "tambo-auth" });
       setAccessToken(token || undefined);
     }
 
     fetchToken();
 
-    // Clerk JWTs expire after ~60s; refresh every 50s to stay ahead
-    const interval = setInterval(fetchToken, 50_000);
+    // tambo-auth JWT template set to 30min; refresh every 25min
+    const interval = setInterval(fetchToken, 25 * 60 * 1000);
     return () => clearInterval(interval);
   }, [isLoaded, isSignedIn, getToken]);
 

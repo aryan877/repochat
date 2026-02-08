@@ -17,10 +17,10 @@ import { ReviewChecklist } from "@/components/review/review-checklist";
 import type { Suggestion } from "@tambo-ai/react";
 import {
   useTamboThread,
-  useTamboThreadList,
   useTamboClient,
   useTamboContextHelpers,
 } from "@tambo-ai/react";
+import { useThreadList } from "../thread-list-provider";
 import type { Id } from "../../../../convex/_generated/dataModel";
 type ViewMode = "chat" | "code";
 
@@ -407,48 +407,10 @@ function ChatPageInner() {
   const { currentThreadId, switchCurrentThread, startNewThread } =
     useTamboThread();
   const client = useTamboClient();
-  const threadListResult = useTamboThreadList();
   const { addContextHelper } = useTamboContextHelpers();
 
-  // The SDK's useTamboThreadList fires its React Query before the session token
-  // exchange completes, caching empty results that never get invalidated.
-  // We bypass this by fetching threads directly once bearer is set.
-  type ThreadItem = { id: string; name?: string; createdAt: string; updatedAt: string };
-  const [directThreads, setDirectThreads] = useState<ThreadItem[] | null>(null);
-  const directFetchedRef = useRef(false);
-
-  useEffect(() => {
-    if (!client.bearer || directFetchedRef.current) return;
-    directFetchedRef.current = true;
-    (async () => {
-      try {
-        const project = await client.beta.projects.getCurrent();
-        const result = await client.beta.threads.list(project.id, {});
-        setDirectThreads((result.items ?? []) as ThreadItem[]);
-      } catch {
-        // fall back to SDK data
-      }
-    })();
-  }, [client.bearer]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Merge: use direct-fetched threads initially, then incorporate SDK cache updates
-  // (SDK cache updates when new threads are created via sendMessage)
-  const sdkThreads = threadListResult.data;
-  const lastStableThreadsRef = useRef<ThreadItem[]>([]);
-  const mergedThreads = useMemo(() => {
-    const sdkItems = (sdkThreads && typeof sdkThreads !== "string" && sdkThreads.items) ? sdkThreads.items as ThreadItem[] : [];
-    const directItems = directThreads ?? [];
-    // Merge both lists, preferring SDK items (they have latest state after message sends)
-    const byId = new Map<string, ThreadItem>();
-    for (const t of directItems) byId.set(t.id, t);
-    for (const t of sdkItems) byId.set(t.id, t); // SDK overwrites direct
-    const result = Array.from(byId.values());
-    // Only update if we actually have items — prevents flicker during SDK refetch cycles
-    if (result.length > 0) {
-      lastStableThreadsRef.current = result;
-    }
-    return lastStableThreadsRef.current;
-  }, [sdkThreads, directThreads]);
+  // Thread list lives in layout-level context (survives page remounts)
+  const { threads: mergedThreads, isLoading: threadsLoading, refetch: refetchThreads, removeThread } = useThreadList();
 
   // Track whether we initiated the navigation (to avoid loops)
   const navigatingRef = useRef(false);
@@ -482,7 +444,6 @@ function ChatPageInner() {
   useEffect(() => {
     if (navigatingRef.current) return;
     if (!currentThreadId || currentThreadId === "placeholder") {
-      // On placeholder, URL should be /chat
       if (urlThreadId) router.replace(buildPath("/chat"));
       return;
     }
@@ -538,15 +499,15 @@ function ChatPageInner() {
       } catch {
         // already gone
       }
-      // Remove from our direct-fetched list too
-      setDirectThreads((prev) => prev?.filter((t) => t.id !== threadId) ?? null);
-      threadListResult.refetch();
+      removeThread(threadId);
+      refetchThreads();
     },
     [
       client,
       currentThreadId,
       startNewThread,
-      threadListResult,
+      removeThread,
+      refetchThreads,
       router,
       buildPath,
     ],
@@ -666,7 +627,7 @@ function ChatPageInner() {
             Recent
           </div>
           <div className="space-y-0.5">
-            {directThreads === null ? (
+            {threadsLoading ? (
               <div className="space-y-1 px-2">
                 {Array.from({ length: 4 }).map((_, i) => (
                   <div key={i} className="h-8 bg-card rounded animate-pulse" />

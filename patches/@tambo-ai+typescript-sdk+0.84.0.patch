@@ -1,0 +1,243 @@
+diff --git a/node_modules/@tambo-ai/typescript-sdk/lib/advance-stream.js b/node_modules/@tambo-ai/typescript-sdk/lib/advance-stream.js
+index 81261aa..c94964e 100644
+--- a/node_modules/@tambo-ai/typescript-sdk/lib/advance-stream.js
++++ b/node_modules/@tambo-ai/typescript-sdk/lib/advance-stream.js
+@@ -27,40 +27,48 @@ async function advanceStream(client, body, threadId, options) {
+         }
+     }
+ }
++function tryParseSSELine(line) {
++    const jsonStr = line.startsWith('data: ') ? line.slice(6) : line;
++    if (!jsonStr)
++        return undefined;
++    try {
++        return JSON.parse(jsonStr);
++    }
++    catch {
++        return undefined;
++    }
++}
+ async function* handleStreamResponse(response) {
+     const decoder = new TextDecoder();
+-    const MAX_CHUNK_RETRIES = 5;
+-    let chunkRetryCount = 0;
+     const reader = response.body.getReader();
++    let buffer = '';
+     while (true) {
+         try {
+             const { done, value: chunk } = await reader.read();
+-            if (done)
++            if (done) {
++                if (buffer.trim()) {
++                    const parsed = tryParseSSELine(buffer.trim());
++                    if (parsed !== undefined) {
++                        yield parsed;
++                    }
++                }
+                 break;
+-            const text = decoder.decode(chunk);
+-            const messages = text.split('\n').filter((msg) => msg.trim());
+-            for (const msg of messages) {
+-                if (msg === 'data: DONE') {
++            }
++            buffer += decoder.decode(chunk, { stream: true });
++            const lines = buffer.split('\n');
++            buffer = lines.pop() || '';
++            for (const line of lines) {
++                const trimmed = line.trim();
++                if (!trimmed)
+                     continue;
+-                }
+-                if (msg.startsWith('error: ')) {
+-                    throw new Error(msg.slice(7));
+-                }
+-                const jsonStr = msg.startsWith('data: ') ? msg.slice(6) : msg;
+-                if (!jsonStr) {
++                if (trimmed === 'data: DONE')
+                     continue;
++                if (trimmed.startsWith('error: ')) {
++                    throw new Error(trimmed.slice(7));
+                 }
+-                try {
+-                    yield JSON.parse(jsonStr);
+-                    chunkRetryCount = 0;
+-                }
+-                catch (e) {
+-                    if (chunkRetryCount < MAX_CHUNK_RETRIES) {
+-                        chunkRetryCount++;
+-                        console.warn(`Failed to parse JSON chunk, skipping. Attempt ${chunkRetryCount}/${MAX_CHUNK_RETRIES}`);
+-                        continue;
+-                    }
+-                    throw new Error('Failed to parse JSON after multiple chunks.');
++                const parsed = tryParseSSELine(trimmed);
++                if (parsed !== undefined) {
++                    yield parsed;
+                 }
+             }
+         }
+diff --git a/node_modules/@tambo-ai/typescript-sdk/lib/advance-stream.mjs b/node_modules/@tambo-ai/typescript-sdk/lib/advance-stream.mjs
+index f9f7f3b..951a4f9 100644
+--- a/node_modules/@tambo-ai/typescript-sdk/lib/advance-stream.mjs
++++ b/node_modules/@tambo-ai/typescript-sdk/lib/advance-stream.mjs
+@@ -24,40 +24,48 @@ export async function advanceStream(client, body, threadId, options) {
+         }
+     }
+ }
++function tryParseSSELine(line) {
++    const jsonStr = line.startsWith('data: ') ? line.slice(6) : line;
++    if (!jsonStr)
++        return undefined;
++    try {
++        return JSON.parse(jsonStr);
++    }
++    catch {
++        return undefined;
++    }
++}
+ async function* handleStreamResponse(response) {
+     const decoder = new TextDecoder();
+-    const MAX_CHUNK_RETRIES = 5;
+-    let chunkRetryCount = 0;
+     const reader = response.body.getReader();
++    let buffer = '';
+     while (true) {
+         try {
+             const { done, value: chunk } = await reader.read();
+-            if (done)
++            if (done) {
++                if (buffer.trim()) {
++                    const parsed = tryParseSSELine(buffer.trim());
++                    if (parsed !== undefined) {
++                        yield parsed;
++                    }
++                }
+                 break;
+-            const text = decoder.decode(chunk);
+-            const messages = text.split('\n').filter((msg) => msg.trim());
+-            for (const msg of messages) {
+-                if (msg === 'data: DONE') {
++            }
++            buffer += decoder.decode(chunk, { stream: true });
++            const lines = buffer.split('\n');
++            buffer = lines.pop() || '';
++            for (const line of lines) {
++                const trimmed = line.trim();
++                if (!trimmed)
+                     continue;
+-                }
+-                if (msg.startsWith('error: ')) {
+-                    throw new Error(msg.slice(7));
+-                }
+-                const jsonStr = msg.startsWith('data: ') ? msg.slice(6) : msg;
+-                if (!jsonStr) {
++                if (trimmed === 'data: DONE')
+                     continue;
++                if (trimmed.startsWith('error: ')) {
++                    throw new Error(trimmed.slice(7));
+                 }
+-                try {
+-                    yield JSON.parse(jsonStr);
+-                    chunkRetryCount = 0;
+-                }
+-                catch (e) {
+-                    if (chunkRetryCount < MAX_CHUNK_RETRIES) {
+-                        chunkRetryCount++;
+-                        console.warn(`Failed to parse JSON chunk, skipping. Attempt ${chunkRetryCount}/${MAX_CHUNK_RETRIES}`);
+-                        continue;
+-                    }
+-                    throw new Error('Failed to parse JSON after multiple chunks.');
++                const parsed = tryParseSSELine(trimmed);
++                if (parsed !== undefined) {
++                    yield parsed;
+                 }
+             }
+         }
+diff --git a/node_modules/@tambo-ai/typescript-sdk/src/lib/advance-stream.ts b/node_modules/@tambo-ai/typescript-sdk/src/lib/advance-stream.ts
+index 18f81c8..c422f57 100644
+--- a/node_modules/@tambo-ai/typescript-sdk/src/lib/advance-stream.ts
++++ b/node_modules/@tambo-ai/typescript-sdk/src/lib/advance-stream.ts
+@@ -40,45 +40,41 @@ export async function advanceStream(
+ 
+ async function* handleStreamResponse<T>(response: Response): AsyncIterable<T> {
+   const decoder = new TextDecoder();
+-  const MAX_CHUNK_RETRIES = 5;
+-  let chunkRetryCount = 0;
+   const reader = (response.body as unknown as ReadableStream).getReader();
++  let buffer = '';
+ 
+   while (true) {
+     try {
+       const { done, value: chunk } = await reader.read();
+-      if (done) break;
+-
+-      const text = decoder.decode(chunk as Uint8Array);
+-      const messages = text.split('\n').filter((msg) => msg.trim());
+-
+-      for (const msg of messages) {
+-        if (msg === 'data: DONE') {
+-          continue;
++      if (done) {
++        // Process any remaining buffered data
++        if (buffer.trim()) {
++          const parsed = tryParseSSELine<T>(buffer.trim());
++          if (parsed !== undefined) {
++            yield parsed;
++          }
+         }
++        break;
++      }
+ 
+-        if (msg.startsWith('error: ')) {
+-          throw new Error(msg.slice(7));
+-        }
++      buffer += decoder.decode(chunk as Uint8Array, { stream: true });
+ 
+-        const jsonStr = msg.startsWith('data: ') ? msg.slice(6) : msg;
++      // Process complete lines (terminated by \n)
++      const lines = buffer.split('\n');
++      // Last element is either empty (if buffer ended with \n) or a partial line
++      buffer = lines.pop() || '';
+ 
+-        if (!jsonStr) {
+-          continue;
++      for (const line of lines) {
++        const trimmed = line.trim();
++        if (!trimmed) continue;
++        if (trimmed === 'data: DONE') continue;
++        if (trimmed.startsWith('error: ')) {
++          throw new Error(trimmed.slice(7));
+         }
+ 
+-        try {
+-          yield JSON.parse(jsonStr) as T;
+-          chunkRetryCount = 0;
+-        } catch (e) {
+-          if (chunkRetryCount < MAX_CHUNK_RETRIES) {
+-            chunkRetryCount++;
+-            console.warn(
+-              `Failed to parse JSON chunk, skipping. Attempt ${chunkRetryCount}/${MAX_CHUNK_RETRIES}`,
+-            );
+-            continue;
+-          }
+-          throw new Error('Failed to parse JSON after multiple chunks.');
++        const parsed = tryParseSSELine<T>(trimmed);
++        if (parsed !== undefined) {
++          yield parsed;
+         }
+       }
+     } catch (error) {
+@@ -87,3 +83,14 @@ async function* handleStreamResponse<T>(response: Response): AsyncIterable<T> {
+     }
+   }
+ }
++
++function tryParseSSELine<T>(line: string): T | undefined {
++  const jsonStr = line.startsWith('data: ') ? line.slice(6) : line;
++  if (!jsonStr) return undefined;
++  try {
++    return JSON.parse(jsonStr) as T;
++  } catch {
++    // Not valid JSON - could be an SSE field we don't care about (id:, event:, retry:)
++    return undefined;
++  }
++}

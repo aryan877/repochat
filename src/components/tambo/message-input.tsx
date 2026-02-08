@@ -466,7 +466,6 @@ const MessageInputInternal = React.forwardRef<
   const [isDragging, setIsDragging] = React.useState(false);
   const editorRef = React.useRef<TamboEditor>(null!);
   const dragCounter = React.useRef(0);
-  const suppressSyncRef = React.useRef(false);
 
   // Use elicitation context (optional)
   const { elicitation, resolveElicitation } = useTamboElicitationContext();
@@ -479,7 +478,6 @@ const MessageInputInternal = React.forwardRef<
   }, [setValue, thread.id]);
 
   React.useEffect(() => {
-    if (suppressSyncRef.current) return;
     setDisplayValue(value);
     storeValueInSessionStorage(thread.id, value);
     if (value && editorRef.current) {
@@ -507,8 +505,7 @@ const MessageInputInternal = React.forwardRef<
 
       const imageIdsAtSubmitTime = images.map((image) => image.id);
 
-      // Clear display immediately so user sees empty input while streaming
-      suppressSyncRef.current = true;
+      // Clear any previous errors
       setDisplayValue("");
       storeValueInSessionStorage(thread.id);
 
@@ -541,7 +538,6 @@ const MessageInputInternal = React.forwardRef<
         // Cancel the thread to reset loading state
         await cancel();
       } finally {
-        suppressSyncRef.current = false;
         setIsSubmitting(false);
       }
     },

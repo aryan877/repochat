@@ -466,6 +466,7 @@ const MessageInputInternal = React.forwardRef<
   const [isDragging, setIsDragging] = React.useState(false);
   const editorRef = React.useRef<TamboEditor>(null!);
   const dragCounter = React.useRef(0);
+  const suppressSyncRef = React.useRef(false);
 
   // Use elicitation context (optional)
   const { elicitation, resolveElicitation } = useTamboElicitationContext();
@@ -478,6 +479,7 @@ const MessageInputInternal = React.forwardRef<
   }, [setValue, thread.id]);
 
   React.useEffect(() => {
+    if (suppressSyncRef.current) return;
     setDisplayValue(value);
     storeValueInSessionStorage(thread.id, value);
     if (value && editorRef.current) {
@@ -505,8 +507,8 @@ const MessageInputInternal = React.forwardRef<
 
       const imageIdsAtSubmitTime = images.map((image) => image.id);
 
-      // Clear input immediately before awaiting stream
-      setValue("");
+      // Clear display immediately so user sees empty input while streaming
+      suppressSyncRef.current = true;
       setDisplayValue("");
       storeValueInSessionStorage(thread.id);
 
@@ -515,6 +517,7 @@ const MessageInputInternal = React.forwardRef<
           streamResponse: true,
           resourceNames: latestResourceNames,
         });
+        setValue("");
         // Clear only the images that were staged when submission started so
         // any images added while the request was in-flight are preserved.
         if (imageIdsAtSubmitTime.length > 0) {
@@ -526,7 +529,6 @@ const MessageInputInternal = React.forwardRef<
         }, 0);
       } catch (error) {
         console.error("Failed to submit message:", error);
-        setValue(value);
         setDisplayValue(value);
         // On submit failure, also clear image error
         setImageError(null);
@@ -539,6 +541,7 @@ const MessageInputInternal = React.forwardRef<
         // Cancel the thread to reset loading state
         await cancel();
       } finally {
+        suppressSyncRef.current = false;
         setIsSubmitting(false);
       }
     },

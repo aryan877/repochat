@@ -862,7 +862,7 @@ function ChatPageInner() {
         {/* Code view — always mounted, hidden when chat mode active */}
         <div className={mode === "code" ? "flex-1 pt-14 flex flex-col overflow-hidden relative" : "hidden"}>
           {!selectedRepo && (
-            <div className="absolute top-2 left-6 pointer-events-none z-10">
+            <div className="absolute top-16 left-6 pointer-events-none z-10">
               <ArrowAnimation />
             </div>
           )}

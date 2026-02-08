@@ -1317,6 +1317,7 @@ export default function DocsPage() {
           <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] text-[#52525b]">
             Powered by{" "}
             <span className="text-[#71717a] font-medium">Tambo</span>
+            <img src="/Octo-Icon.svg" alt="Tambo" className="h-4 w-4" />
           </span>
         </div>
       </header>

@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation, internalQuery } from "./_generated/server";
+import { internalMutation, internalQuery, query } from "./_generated/server";
 
 // Create indexing job
 export const createIndexingJob = internalMutation({
@@ -154,6 +154,30 @@ export const getRepoInternal = internalQuery({
   args: { repoId: v.id("repos") },
   handler: async (ctx, { repoId }) => {
     return await ctx.db.get(repoId);
+  },
+});
+
+// Get latest indexing job for a repo (public, for live status UI)
+export const getLatestIndexingJob = query({
+  args: { repoId: v.id("repos") },
+  handler: async (ctx, { repoId }) => {
+    const job = await ctx.db
+      .query("indexingJobs")
+      .withIndex("by_repo", (q) => q.eq("repoId", repoId))
+      .order("desc")
+      .first();
+    if (!job) return null;
+    return {
+      status: job.status,
+      totalFiles: job.totalFiles,
+      processedFiles: job.processedFiles,
+      totalChunks: job.totalChunks,
+      storedChunks: job.storedChunks,
+      error: job.error,
+      triggerType: job.triggerType,
+      startedAt: job.startedAt,
+      completedAt: job.completedAt,
+    };
   },
 });
 

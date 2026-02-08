@@ -95,8 +95,8 @@
   }
 }
 
-html {
-  scroll-behavior: smooth;
+html, body {
+  overscroll-behavior: none;
 }
 
 ::-webkit-scrollbar {

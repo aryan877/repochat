@@ -54,14 +54,19 @@ export const handleInstallation = internalAction({
         repositorySelection: installation.repository_selection,
       });
 
-      // Add initial repositories if any
+      // Add initial repositories and trigger indexing
       if (createdEvent.repositories && createdEvent.repositories.length > 0) {
         for (const repo of createdEvent.repositories) {
-          await ctx.runMutation(internal.repos.addRepo, {
+          const repoId = await ctx.runMutation(internal.repos.addRepo, {
             installationId: installation.id,
             githubRepoId: repo.id,
             fullName: repo.full_name,
             isPrivate: repo.private,
+          });
+          await ctx.runAction(internal.indexing.startIndexing, {
+            repoId,
+            branch: "main",
+            triggerType: "initial",
           });
         }
       }
@@ -93,11 +98,16 @@ export const handleInstallationRepos = internalAction({
       const installationId = event.installation.id;
 
       for (const repo of event.repositories_added) {
-        await ctx.runMutation(internal.repos.addRepo, {
+        const repoId = await ctx.runMutation(internal.repos.addRepo, {
           installationId,
           githubRepoId: repo.id,
           fullName: repo.full_name,
           isPrivate: repo.private,
+        });
+        await ctx.runAction(internal.indexing.startIndexing, {
+          repoId,
+          branch: "main",
+          triggerType: "initial",
         });
       }
     } else if (action === "removed") {

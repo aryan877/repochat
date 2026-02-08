@@ -6,8 +6,8 @@ import path from "path";
 import type Parser from "web-tree-sitter";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
-import { internalAction } from "./_generated/server";
-import { shouldSkipPath, computeFileDiff, type GitHubTreeItem } from "./shared";
+import { action, internalAction } from "./_generated/server";
+import { computeFileDiff, shouldSkipPath, type GitHubTreeItem } from "./shared";
 import { workflow } from "./workflowManager";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -38,7 +38,9 @@ const EXT_TO_LANG: Record<string, { wasm: string; query?: string }> = {
   ".bash": { wasm: "tree-sitter-bash" },
 };
 
-function getLanguageInfo(filePath: string): { wasm: string; query?: string } | null {
+function getLanguageInfo(
+  filePath: string,
+): { wasm: string; query?: string } | null {
   const ext = path.extname(filePath).toLowerCase();
   return EXT_TO_LANG[ext] || null;
 }
@@ -397,11 +399,13 @@ export const fetchRepoTreeAndDiff = internalAction({
         getLanguageInfo(item.path) !== null,
     );
 
-    const existingFileShas: { filePath: string; fileSha: string | undefined }[] =
-      await ctx.runQuery(internal.indexingMutations.getBranchFileShas, {
-        repoId,
-        branch,
-      });
+    const existingFileShas: {
+      filePath: string;
+      fileSha: string | undefined;
+    }[] = await ctx.runQuery(internal.indexingMutations.getBranchFileShas, {
+      repoId,
+      branch,
+    });
 
     const { toFetch, toDelete, skippedCount } = computeFileDiff(
       githubFiles,
@@ -433,7 +437,10 @@ export const processFileBatch = internalAction({
     files: v.array(v.object({ path: v.string(), sha: v.string() })),
     jobId: v.id("indexingJobs"),
   },
-  handler: async (ctx, { repoId, branch, installationId, owner, repoName, files, jobId }) => {
+  handler: async (
+    ctx,
+    { repoId, branch, installationId, owner, repoName, files, jobId },
+  ) => {
     let processedCount = 0;
     let chunkCount = 0;
 
@@ -504,11 +511,14 @@ export const deleteStaleBatch = internalAction({
   handler: async (ctx, { repoId, branch, filePaths }) => {
     let deletedCount = 0;
     for (const filePath of filePaths) {
-      const count = await ctx.runMutation(internal.indexingMutations.deleteFileChunks, {
-        repoId,
-        branch,
-        filePath,
-      });
+      const count = await ctx.runMutation(
+        internal.indexingMutations.deleteFileChunks,
+        {
+          repoId,
+          branch,
+          filePath,
+        },
+      );
       deletedCount += count;
     }
     return { deletedCount };
@@ -516,7 +526,7 @@ export const deleteStaleBatch = internalAction({
 });
 
 // ============================================================================
-// Launcher — called by webhooks.ts (interface unchanged)
+// Launcher — called by webhooks.ts
 // ============================================================================
 
 export const startIndexing = internalAction({
@@ -570,6 +580,37 @@ export const startIndexing = internalAction({
     await ctx.runMutation(internal.indexingMutations.updateIndexingJob, {
       jobId,
       workflowId,
+    });
+  },
+});
+
+/** Public action for users to trigger re-indexing from the frontend. */
+export const triggerReindex = action({
+  args: {
+    repoId: v.id("repos"),
+    branch: v.optional(v.string()),
+    clerkId: v.string(),
+  },
+  handler: async (ctx, { repoId, branch, clerkId }) => {
+    // Validate user owns this repo
+    const userInstallationId = await ctx.runQuery(
+      internal.githubHelpers.getUserInstallationIdInternal,
+      { clerkId },
+    );
+    if (!userInstallationId) throw new Error("No GitHub installation found");
+
+    const repoInstallationId = await ctx.runQuery(
+      internal.repos.getRepoInstallationId,
+      { repoId },
+    );
+    if (repoInstallationId !== userInstallationId) {
+      throw new Error("Unauthorized: repo does not belong to this user");
+    }
+
+    await ctx.runAction(internal.indexing.startIndexing, {
+      repoId,
+      branch: branch ?? "main",
+      triggerType: "manual",
     });
   },
 });

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import Link from "next/link";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -106,7 +106,7 @@ export default function SettingsPage() {
 
   if (!mounted || !isLoaded || !user || githubStatus === undefined) {
     return (
-      <div className="min-h-screen bg-[#131314] flex items-center justify-center">
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <svg className="animate-spin w-5 h-5 text-[#52525b]" viewBox="0 0 24 24" fill="none">
             <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.2" />
@@ -118,6 +118,66 @@ export default function SettingsPage() {
   }
 
   return <SettingsPageInner />;
+}
+
+function IndexingStatus({ repoId }: { repoId: Id<"repos"> }) {
+  const job = useQuery(api.indexingMutations.getLatestIndexingJob, { repoId });
+  if (!job) return null;
+
+  const isActive = !["completed", "failed"].includes(job.status);
+  const statusLabels: Record<string, string> = {
+    pending: "Starting indexing...",
+    cloning: "Fetching repo...",
+    parsing: "Parsing files...",
+    embedding: "Generating embeddings...",
+    storing: "Storing chunks...",
+    completed: "Indexing complete",
+    failed: "Indexing failed",
+  };
+
+  const progress =
+    job.totalFiles && job.processedFiles
+      ? Math.round((job.processedFiles / job.totalFiles) * 100)
+      : 0;
+
+  return (
+    <div className="mt-3 pt-3 border-t border-[#2a2a2a]">
+      <div className="flex items-center gap-2 mb-1.5">
+        {isActive && (
+          <svg className="animate-spin w-3.5 h-3.5 text-[#3b82f6]" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.2" />
+            <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        )}
+        <span className={`text-xs ${job.status === "failed" ? "text-[#ef4444]" : isActive ? "text-[#3b82f6]" : "text-[#52525b]"}`}>
+          {statusLabels[job.status] ?? job.status}
+        </span>
+      </div>
+      {isActive && job.totalFiles != null && (
+        <div>
+          <div className="h-1 bg-[#2a2a2a] rounded-full overflow-hidden">
+            <div
+              className="h-full bg-[#3b82f6] transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-[10px] text-[#52525b]">
+              {job.processedFiles ?? 0} / {job.totalFiles} files
+            </span>
+            {job.storedChunks != null && (
+              <span className="text-[10px] text-[#52525b]">
+                {job.storedChunks} chunks
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+      {job.status === "failed" && job.error && (
+        <p className="text-[10px] text-[#ef4444]/70 mt-1">{job.error}</p>
+      )}
+    </div>
+  );
 }
 
 function SettingsPageInner() {
@@ -134,6 +194,20 @@ function SettingsPageInner() {
   );
 
   const updateRepoSettings = useMutation(api.users.updateRepoSettings);
+  const triggerReindex = useAction(api.indexing.triggerReindex);
+  const [reindexingRepoId, setReindexingRepoId] = useState<Id<"repos"> | null>(null);
+
+  const handleReindex = async (repoId: Id<"repos">) => {
+    if (!user?.id) return;
+    setReindexingRepoId(repoId);
+    try {
+      await triggerReindex({ repoId, clerkId: user.id });
+    } catch (error) {
+      console.error("Failed to trigger re-index:", error);
+    } finally {
+      setReindexingRepoId(null);
+    }
+  };
 
   // MCP server management
   const userMcpServers = useQuery(
@@ -209,12 +283,12 @@ function SettingsPageInner() {
   const githubAppSlug = process.env.NEXT_PUBLIC_GITHUB_APP_SLUG || "repochat-dev";
 
   return (
-    <div className="min-h-screen bg-[#131314] text-[#e4e4e7]">
+    <div className="min-h-screen bg-[#0a0a0a] text-[#e4e4e7]">
       <div className="max-w-3xl mx-auto px-4 py-8">
         <div className="flex items-center gap-4 mb-8">
           <Link
             href="/"
-            className="p-2 rounded-lg text-[#71717a] hover:text-[#e4e4e7] hover:bg-[#1e1e20] transition-colors"
+            className="p-2 rounded-lg text-[#71717a] hover:text-[#e4e4e7] hover:bg-[#141414] transition-colors"
           >
             <ArrowLeftIcon />
           </Link>
@@ -224,10 +298,10 @@ function SettingsPageInner() {
         <div className="space-y-8">
           <section>
             <h2 className="text-sm font-medium text-[#71717a] uppercase tracking-wider mb-4">GitHub Connection</h2>
-            <div className="bg-[#1e1e20] border border-[#2a2a2d] rounded-xl p-5">
+            <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-[#2a2a2d] flex items-center justify-center">
+                  <div className="w-12 h-12 rounded-full bg-[#2a2a2a] flex items-center justify-center">
                     <GitHubIcon />
                   </div>
                   <div>
@@ -239,7 +313,7 @@ function SettingsPageInner() {
                   href={`https://github.com/apps/${githubAppSlug}/installations/new`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-4 py-2 text-sm bg-[#2a2a2d] hover:bg-[#3a3a3d] rounded-lg transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 text-sm bg-[#2a2a2a] hover:bg-[#3a3a3a] rounded-lg transition-colors"
                 >
                   <span>Manage</span>
                   <ExternalLinkIcon />
@@ -255,7 +329,7 @@ function SettingsPageInner() {
                 href={`https://github.com/apps/${githubAppSlug}/installations/new`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[#2a2a2d] hover:bg-[#3a3a3d] rounded-lg transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[#2a2a2a] hover:bg-[#3a3a3a] rounded-lg transition-colors"
               >
                 <span>Add repos</span>
                 <ExternalLinkIcon />
@@ -267,11 +341,11 @@ function SettingsPageInner() {
                 {connectedRepos.map((repo) => (
                   <div
                     key={repo._id}
-                    className="bg-[#1e1e20] border border-[#2a2a2d] rounded-xl p-4"
+                    className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-[#2a2a2d] flex items-center justify-center text-[#71717a]">
+                        <div className="w-8 h-8 rounded-lg bg-[#2a2a2a] flex items-center justify-center text-[#71717a]">
                           <GitHubIcon />
                         </div>
                         <div>
@@ -291,7 +365,7 @@ function SettingsPageInner() {
                           <button
                             onClick={() => handleToggleAutoReview(repo._id, repo.autoReview || false)}
                             className={`relative w-10 h-5 rounded-full transition-colors ${
-                              repo.autoReview ? "bg-[#3b82f6]" : "bg-[#2a2a2d]"
+                              repo.autoReview ? "bg-[#3b82f6]" : "bg-[#2a2a2a]"
                             }`}
                           >
                             <span
@@ -304,23 +378,28 @@ function SettingsPageInner() {
                       </div>
                     </div>
 
-                    {repo.lastIndexedAt && (
-                      <div className="mt-3 pt-3 border-t border-[#2a2a2d] flex items-center justify-between">
-                        <span className="text-xs text-[#52525b]">
-                          Last indexed: {new Date(repo.lastIndexedAt).toLocaleDateString()}
-                        </span>
-                        <button className="flex items-center gap-1.5 text-xs text-[#71717a] hover:text-[#e4e4e7] transition-colors">
-                          <RefreshIcon />
-                          Re-index
-                        </button>
-                      </div>
-                    )}
+                    <div className="mt-3 pt-3 border-t border-[#2a2a2a] flex items-center justify-between">
+                      <span className="text-xs text-[#52525b]">
+                        {repo.lastIndexedAt
+                          ? `Last indexed: ${new Date(repo.lastIndexedAt).toLocaleDateString()}`
+                          : "Not indexed yet"}
+                      </span>
+                      <button
+                        onClick={() => handleReindex(repo._id)}
+                        disabled={reindexingRepoId === repo._id}
+                        className="flex items-center gap-1.5 text-xs text-[#71717a] hover:text-[#e4e4e7] disabled:opacity-50 transition-colors"
+                      >
+                        <RefreshIcon />
+                        {reindexingRepoId === repo._id ? "Starting..." : "Re-index"}
+                      </button>
+                    </div>
+                    <IndexingStatus repoId={repo._id} />
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="bg-[#1e1e20] border border-[#2a2a2d] rounded-xl p-8 text-center">
-                <div className="w-12 h-12 rounded-full bg-[#2a2a2d] flex items-center justify-center mx-auto mb-4">
+              <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-8 text-center">
+                <div className="w-12 h-12 rounded-full bg-[#2a2a2a] flex items-center justify-center mx-auto mb-4">
                   <GitHubIcon />
                 </div>
                 <h3 className="font-medium mb-2">No repositories connected</h3>
@@ -346,7 +425,7 @@ function SettingsPageInner() {
               <h2 className="text-sm font-medium text-[#71717a] uppercase tracking-wider">MCP Integrations</h2>
               <button
                 onClick={() => { setMcpAddOpen(!mcpAddOpen); setMcpTemplate(null); setMcpFields({}); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[#2a2a2d] hover:bg-[#3a3a3d] rounded-lg transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[#2a2a2a] hover:bg-[#3a3a3a] rounded-lg transition-colors"
               >
                 <span>{mcpAddOpen ? "Cancel" : "Add integration"}</span>
               </button>
@@ -354,7 +433,7 @@ function SettingsPageInner() {
 
             {/* Add MCP form */}
             {mcpAddOpen && (
-              <div className="bg-[#1e1e20] border border-[#2a2a2d] rounded-xl p-5 mb-4">
+              <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-5 mb-4">
                 {!mcpTemplate ? (
                   <div className="space-y-2">
                     <p className="text-sm text-[#71717a] mb-3">Choose an integration:</p>
@@ -362,7 +441,7 @@ function SettingsPageInner() {
                       <button
                         key={t.id}
                         onClick={() => setMcpTemplate(t.id)}
-                        className="w-full text-left p-4 bg-[#131314] border border-[#2a2a2d] rounded-lg hover:border-[#3a3a3d] transition-colors"
+                        className="w-full text-left p-4 bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg hover:border-[#3a3a3a] transition-colors"
                       >
                         <div className="font-medium">{t.name}</div>
                         <div className="text-xs text-[#52525b] mt-0.5">{t.description}</div>
@@ -391,7 +470,7 @@ function SettingsPageInner() {
                           placeholder={field.placeholder}
                           value={mcpFields[field.key] || ""}
                           onChange={(e) => setMcpFields((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                          className="w-full px-3 py-2 text-sm bg-[#131314] border border-[#2a2a2d] rounded-lg text-[#e4e4e7] placeholder:text-[#52525b] focus:outline-none focus:border-[#3b82f6]"
+                          className="w-full px-3 py-2 text-sm bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg text-[#e4e4e7] placeholder:text-[#52525b] focus:outline-none focus:border-[#3b82f6]"
                         />
                       </div>
                     ))}
@@ -424,11 +503,11 @@ function SettingsPageInner() {
                   return (
                     <div
                       key={server._id}
-                      className="bg-[#1e1e20] border border-[#2a2a2d] rounded-xl p-4"
+                      className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-4"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-[#2a2a2d] flex items-center justify-center text-[#71717a]">
+                          <div className="w-8 h-8 rounded-lg bg-[#2a2a2a] flex items-center justify-center text-[#71717a]">
                             <PlugIcon />
                           </div>
                           <div>
@@ -469,8 +548,8 @@ function SettingsPageInner() {
                 })}
               </div>
             ) : !mcpAddOpen ? (
-              <div className="bg-[#1e1e20] border border-[#2a2a2d] rounded-xl p-8 text-center">
-                <div className="w-12 h-12 rounded-full bg-[#2a2a2d] flex items-center justify-center mx-auto mb-4">
+              <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-8 text-center">
+                <div className="w-12 h-12 rounded-full bg-[#2a2a2a] flex items-center justify-center mx-auto mb-4">
                   <PlugIcon />
                 </div>
                 <h3 className="font-medium mb-2">No integrations connected</h3>
@@ -489,13 +568,13 @@ function SettingsPageInner() {
 
           <section>
             <h2 className="text-sm font-medium text-[#71717a] uppercase tracking-wider mb-4">Auto Review Settings</h2>
-            <div className="bg-[#1e1e20] border border-[#2a2a2d] rounded-xl p-5 space-y-4">
+            <div className="bg-[#141414] border border-[#2a2a2a] rounded-xl p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="font-medium">Review draft PRs</div>
                   <div className="text-sm text-[#52525b]">Run automated reviews on draft pull requests</div>
                 </div>
-                <button className="relative w-10 h-5 rounded-full bg-[#2a2a2d] transition-colors">
+                <button className="relative w-10 h-5 rounded-full bg-[#2a2a2a] transition-colors">
                   <span className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform translate-x-0" />
                 </button>
               </div>
@@ -505,7 +584,7 @@ function SettingsPageInner() {
                   <div className="font-medium">Security-only mode</div>
                   <div className="text-sm text-[#52525b]">Only flag security issues, skip style suggestions</div>
                 </div>
-                <button className="relative w-10 h-5 rounded-full bg-[#2a2a2d] transition-colors">
+                <button className="relative w-10 h-5 rounded-full bg-[#2a2a2a] transition-colors">
                   <span className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform translate-x-0" />
                 </button>
               </div>
@@ -515,7 +594,7 @@ function SettingsPageInner() {
                   <div className="font-medium">Auto-approve safe PRs</div>
                   <div className="text-sm text-[#52525b]">Automatically approve PRs with no issues found</div>
                 </div>
-                <button className="relative w-10 h-5 rounded-full bg-[#2a2a2d] transition-colors">
+                <button className="relative w-10 h-5 rounded-full bg-[#2a2a2a] transition-colors">
                   <span className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform translate-x-0" />
                 </button>
               </div>
@@ -524,7 +603,7 @@ function SettingsPageInner() {
 
           <section>
             <h2 className="text-sm font-medium text-[#71717a] uppercase tracking-wider mb-4">Danger Zone</h2>
-            <div className="bg-[#1e1e20] border border-[#ef4444]/30 rounded-xl p-5">
+            <div className="bg-[#141414] border border-[#ef4444]/30 rounded-xl p-5">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="font-medium text-[#ef4444]">Disconnect GitHub</div>

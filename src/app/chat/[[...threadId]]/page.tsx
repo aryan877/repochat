@@ -322,6 +322,85 @@ function ChatPageInner() {
     new Set(),
   );
 
+  // Resizable checklist panel state
+  const CHECKLIST_MIN = 240;
+  const CHECKLIST_MAX = 500;
+  const CHECKLIST_DEFAULT = 320;
+  const [checklistWidth, setChecklistWidth] = useState(() => {
+    if (typeof window === "undefined") return CHECKLIST_DEFAULT;
+    const saved = localStorage.getItem("repochat-checklist-width");
+    return saved ? Math.min(CHECKLIST_MAX, Math.max(CHECKLIST_MIN, Number(saved))) : CHECKLIST_DEFAULT;
+  });
+  const [isChecklistResizing, setIsChecklistResizing] = useState(false);
+  const checklistRef = useRef<HTMLElement>(null);
+
+  const handleChecklistResizeDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsChecklistResizing(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isChecklistResizing) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      if (checklistRef.current) {
+        const rect = checklistRef.current.getBoundingClientRect();
+        // Resize from left edge: width = right edge - mouse x
+        const newWidth = rect.right - e.clientX;
+        const clamped = Math.min(CHECKLIST_MAX, Math.max(CHECKLIST_MIN, newWidth));
+        setChecklistWidth(clamped);
+      }
+    };
+    const handleMouseUp = () => {
+      setIsChecklistResizing(false);
+      localStorage.setItem("repochat-checklist-width", String(checklistWidth));
+    };
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isChecklistResizing, checklistWidth]);
+
+  // Resizable sidebar state
+  const SIDEBAR_MIN = 200;
+  const SIDEBAR_MAX = 400;
+  const SIDEBAR_DEFAULT = 256;
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window === "undefined") return SIDEBAR_DEFAULT;
+    const saved = localStorage.getItem("repochat-sidebar-width");
+    return saved ? Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Number(saved))) : SIDEBAR_DEFAULT;
+  });
+  const [isSidebarResizing, setIsSidebarResizing] = useState(false);
+  const sidebarRef = useRef<HTMLElement>(null);
+
+  const handleSidebarResizeDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsSidebarResizing(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isSidebarResizing) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      if (sidebarRef.current) {
+        const rect = sidebarRef.current.getBoundingClientRect();
+        const newWidth = e.clientX - rect.left;
+        const clamped = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, newWidth));
+        setSidebarWidth(clamped);
+      }
+    };
+    const handleMouseUp = () => {
+      setIsSidebarResizing(false);
+      localStorage.setItem("repochat-sidebar-width", String(sidebarWidth));
+    };
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isSidebarResizing, sidebarWidth]);
+
   // Tambo thread management
   const { currentThreadId, switchCurrentThread, startNewThread } =
     useTamboThread();
@@ -353,6 +432,7 @@ function ChatPageInner() {
   // Merge: use direct-fetched threads initially, then incorporate SDK cache updates
   // (SDK cache updates when new threads are created via sendMessage)
   const sdkThreads = threadListResult.data;
+  const lastStableThreadsRef = useRef<ThreadItem[]>([]);
   const mergedThreads = useMemo(() => {
     const sdkItems = (sdkThreads && typeof sdkThreads !== "string" && sdkThreads.items) ? sdkThreads.items as ThreadItem[] : [];
     const directItems = directThreads ?? [];
@@ -360,7 +440,12 @@ function ChatPageInner() {
     const byId = new Map<string, ThreadItem>();
     for (const t of directItems) byId.set(t.id, t);
     for (const t of sdkItems) byId.set(t.id, t); // SDK overwrites direct
-    return Array.from(byId.values());
+    const result = Array.from(byId.values());
+    // Only update if we actually have items — prevents flicker during SDK refetch cycles
+    if (result.length > 0) {
+      lastStableThreadsRef.current = result;
+    }
+    return lastStableThreadsRef.current;
   }, [sdkThreads, directThreads]);
 
   // Track whether we initiated the navigation (to avoid loops)
@@ -524,12 +609,15 @@ function ChatPageInner() {
       )}
 
       <aside
+        ref={sidebarRef}
         className={`
-        fixed inset-y-0 left-0 z-50 w-64 bg-background border-r border-secondary
+        fixed inset-y-0 left-0 z-50 bg-background border-r border-secondary
         transform transition-transform duration-200 ease-out flex flex-col
         md:relative md:translate-x-0
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+        ${isSidebarResizing ? "select-none" : ""}
       `}
+        style={{ width: sidebarWidth }}
       >
         <div className="h-14 px-4 flex items-center justify-between border-b border-secondary flex-shrink-0">
           <span className="text-sm font-medium">RepoChat</span>
@@ -648,6 +736,14 @@ function ChatPageInner() {
             <span className="truncate">@{githubStatus?.github?.username}</span>
           </div>
         </div>
+
+        {/* Sidebar resize handle — desktop only */}
+        <div
+          onMouseDown={handleSidebarResizeDown}
+          className={`absolute top-0 right-0 w-1.5 h-full cursor-col-resize hidden md:flex items-center justify-center hover:bg-secondary transition-colors ${
+            isSidebarResizing ? "bg-accent" : ""
+          }`}
+        />
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0 relative">
@@ -752,7 +848,18 @@ function ChatPageInner() {
                 placeholder={`Ask about ${selectedRepo}...`}
                 className="flex-1 min-w-0"
               />
-              <aside className="hidden lg:block w-80 border-l border-secondary bg-background overflow-y-auto">
+              <aside
+                ref={checklistRef}
+                className={`hidden lg:block relative border-l border-secondary bg-background overflow-y-auto ${isChecklistResizing ? "select-none" : ""}`}
+                style={{ width: checklistWidth }}
+              >
+                {/* Checklist resize handle — left edge */}
+                <div
+                  onMouseDown={handleChecklistResizeDown}
+                  className={`absolute top-0 left-0 w-1.5 h-full cursor-col-resize flex items-center justify-center hover:bg-secondary transition-colors z-10 ${
+                    isChecklistResizing ? "bg-accent" : ""
+                  }`}
+                />
                 <ReviewChecklist findings={[]} status="pending" />
               </aside>
             </div>

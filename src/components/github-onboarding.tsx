@@ -285,7 +285,7 @@ export function GitHubOnboarding({ onComplete, showBackButton }: { onComplete?: 
                 <motion.div
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
-                  transition={{ delay: 0.1, type: "spring", stiffness: 200, damping: 15 }}
+                  transition={{ delay: 0.1, duration: 0.2 }}
                   className="w-12 h-12 mx-auto mb-4 rounded-full bg-[#1f1f1f] flex items-center justify-center text-[#fafafa]"
                 >
                   <CheckIcon />

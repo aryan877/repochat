@@ -247,15 +247,7 @@ function ReviewChecklistBase({
 
 export const ReviewChecklist = withInteractable(ReviewChecklistBase, {
   componentName: "ReviewChecklist",
-  description: `A persistent sidebar checklist that tracks all issues found during code review.
-The AI MUST use this to accumulate findings as it reviews code. This creates a shared workspace
-between AI and user where:
-- AI adds findings with type, severity, title, filePath, and lineNumber
-- User can check/uncheck findings to mark them resolved
-- AI can read the current state to see what's been addressed
-- AI should update status: pending → in_progress (when reviewing) → completed (when done)
-Finding types: security, refactor, bug, style, performance
-Severity levels: critical, high, medium, low`,
+  description: "Checklist tracking code review findings. AI adds items, user toggles resolved.",
   propsSchema: ReviewChecklistSchema,
   stateSchema: ReviewChecklistStateSchema,
 });

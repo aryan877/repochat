@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import {
   SignedIn,
   UserButton,
@@ -12,8 +12,9 @@ import { api } from "../../../../convex/_generated/api";
 import Link from "next/link";
 import { MessageThreadFull } from "@/components/tambo/message-thread-full";
 import { CodeView } from "@/components/code-view";
+import { ReviewChecklist } from "@/components/review/review-checklist";
 import type { Suggestion } from "@tambo-ai/react";
-import { useTamboThread, useTamboThreadList, useTamboClient } from "@tambo-ai/react";
+import { useTamboThread, useTamboThreadList, useTamboClient, useTamboContextHelpers } from "@tambo-ai/react";
 import type { Id } from "../../../../convex/_generated/dataModel";
 type ViewMode = "chat" | "code";
 
@@ -135,12 +136,12 @@ export default function ChatPage() {
   const params = useParams<{ threadId?: string[] }>();
   const urlThreadId = params.threadId?.[0];
 
+  const searchParams = useSearchParams();
   const { user, isLoaded } = useUser();
   const [mounted, setMounted] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mode, setMode] = useState<ViewMode>("chat");
-  const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
-  const [selectedRepoId, setSelectedRepoId] = useState<Id<"repos"> | null>(null);
+  const selectedRepo = searchParams.get("repo");
   const [repoDropdownOpen, setRepoDropdownOpen] = useState(false);
   const [threadSearch, setThreadSearch] = useState("");
   const [deletedThreadIds, setDeletedThreadIds] = useState<Set<string>>(new Set());
@@ -154,9 +155,15 @@ export default function ChatPage() {
   const client = useTamboClient();
   const threadListResult = useTamboThreadList();
   const threads = threadListResult.data;
+  const { addContextHelper } = useTamboContextHelpers();
 
   // Track whether we initiated the navigation (to avoid loops)
   const navigatingRef = useRef(false);
+
+  // Helper to build paths preserving the ?repo= search param
+  const buildPath = useCallback((base: string) => {
+    return selectedRepo ? `${base}?repo=${encodeURIComponent(selectedRepo)}` : base;
+  }, [selectedRepo]);
 
   // Sync URL → Tambo: if URL has a threadId, switch to it
   useEffect(() => {
@@ -169,7 +176,7 @@ export default function ChatPage() {
       } catch {
         // Dead thread — hide it and go back
         setDeletedThreadIds((prev) => new Set(prev).add(urlThreadId));
-        router.replace("/chat");
+        router.replace(buildPath("/chat"));
       } finally {
         navigatingRef.current = false;
       }
@@ -182,11 +189,11 @@ export default function ChatPage() {
     if (navigatingRef.current) return;
     if (!currentThreadId || currentThreadId === "placeholder") {
       // On placeholder, URL should be /chat
-      if (urlThreadId) router.replace("/chat");
+      if (urlThreadId) router.replace(buildPath("/chat"));
       return;
     }
     if (currentThreadId !== urlThreadId) {
-      router.replace(`/chat/${currentThreadId}`);
+      router.replace(buildPath(`/chat/${currentThreadId}`));
     }
   }, [currentThreadId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -212,14 +219,14 @@ export default function ChatPage() {
 
   const handleNewThread = useCallback(() => {
     startNewThread();
-    router.push("/chat");
+    router.push(buildPath("/chat"));
     setSidebarOpen(false);
-  }, [startNewThread, router]);
+  }, [startNewThread, router, buildPath]);
 
   const handleSwitchThread = useCallback(async (threadId: string) => {
-    router.push(`/chat/${threadId}`);
+    router.push(buildPath(`/chat/${threadId}`));
     setSidebarOpen(false);
-  }, [router]);
+  }, [router, buildPath]);
 
   const handleDeleteThread = useCallback(async (e: React.MouseEvent, threadId: string) => {
     e.stopPropagation();
@@ -230,7 +237,7 @@ export default function ChatPage() {
     // If we're viewing this thread, go to a new chat
     if (currentThreadId === threadId) {
       startNewThread();
-      router.replace("/chat");
+      router.replace(buildPath("/chat"));
     }
 
     try {
@@ -239,7 +246,7 @@ export default function ChatPage() {
       // already gone
     }
     threadListResult.refetch();
-  }, [client, currentThreadId, startNewThread, threadListResult, router]);
+  }, [client, currentThreadId, startNewThread, threadListResult, router, buildPath]);
 
   const githubStatus = useQuery(
     api.users.getGitHubStatus,
@@ -250,6 +257,13 @@ export default function ChatPage() {
     api.users.getConnectedRepos,
     user?.id ? { clerkId: user.id } : "skip"
   );
+
+  // Derive selectedRepoId from the URL param + connectedRepos
+  const selectedRepoId = useMemo(() => {
+    if (!selectedRepo || !connectedRepos) return null;
+    const repo = connectedRepos.find((r) => r.name === selectedRepo);
+    return repo?._id ?? null;
+  }, [selectedRepo, connectedRepos]) as Id<"repos"> | null;
 
   useEffect(() => {
     setMounted(true);
@@ -273,18 +287,29 @@ export default function ChatPage() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // Register selected repo as always-on context for the AI
+  useEffect(() => {
+    addContextHelper("selectedRepo", () => {
+      if (!selectedRepo || !connectedRepos) return null;
+      const repo = connectedRepos.find((r) => r.name === selectedRepo);
+      if (!repo) return null;
+      return { owner: repo.owner, name: repo.name, fullName: repo.fullName, defaultBranch: repo.defaultBranch };
+    });
+  }, [selectedRepo, connectedRepos, addContextHelper]);
+
   if (!mounted || !isLoaded || !user || githubStatus === undefined || !githubStatus?.connected) {
     return <Spinner />;
   }
 
   const handleRepoSelect = (repo: { _id: Id<"repos">; name: string } | null) => {
+    const params = new URLSearchParams(searchParams.toString());
     if (repo) {
-      setSelectedRepo(repo.name);
-      setSelectedRepoId(repo._id);
+      params.set("repo", repo.name);
     } else {
-      setSelectedRepo(null);
-      setSelectedRepoId(null);
+      params.delete("repo");
     }
+    const threadPath = urlThreadId ? `/chat/${urlThreadId}` : "/chat";
+    router.replace(`${threadPath}?${params.toString()}`);
     setRepoDropdownOpen(false);
   };
 
@@ -409,8 +434,8 @@ export default function ChatPage() {
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0">
-        <header className="h-14 px-3 sm:px-4 flex items-center justify-between border-b border-secondary gap-2">
+      <main className="flex-1 flex flex-col min-w-0 relative">
+        <header className="absolute top-0 left-0 right-0 z-20 h-14 px-3 sm:px-4 flex items-center justify-between gap-2 bg-background/70 backdrop-blur-md">
           <div className="flex items-center gap-2 min-w-0">
             <button
               onClick={() => setSidebarOpen(true)}
@@ -481,13 +506,37 @@ export default function ChatPage() {
         </header>
 
         {mode === "chat" ? (
-          <MessageThreadFull
-            initialSuggestions={INITIAL_SUGGESTIONS}
-            placeholder={selectedRepo ? `Ask about ${selectedRepo}...` : "Ask about a PR, review code, or paste a GitHub link..."}
-            className="flex-1"
-          />
+          selectedRepo ? (
+            <>
+              <MessageThreadFull
+                initialSuggestions={INITIAL_SUGGESTIONS}
+                placeholder={`Ask about ${selectedRepo}...`}
+                className="flex-1 pt-14"
+              />
+              <div className="absolute top-16 right-4 z-10 w-64 max-h-[60vh] overflow-y-auto rounded-xl bg-background/70 backdrop-blur-md border border-secondary/50 shadow-lg hidden lg:block">
+                <ReviewChecklist
+                  findings={[]}
+                  status="pending"
+                />
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center pt-14">
+              <div className="text-center max-w-md px-6">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mx-auto block text-muted-foreground/40 mb-4">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+                <h3 className="text-lg font-medium text-foreground mb-2">Select a Repository</h3>
+                <p className="text-sm text-muted-foreground">
+                  Choose a repository from the dropdown above to start chatting.
+                </p>
+              </div>
+            </div>
+          )
         ) : (
-          <CodeView repoId={selectedRepoId} repoName={selectedRepo} />
+          <div className="flex-1 pt-14">
+            <CodeView repoId={selectedRepoId} repoName={selectedRepo} />
+          </div>
         )}
       </main>
     </div>

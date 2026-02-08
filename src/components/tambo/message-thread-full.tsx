@@ -73,14 +73,14 @@ function SuggestionsBar({ initialSuggestions }: { initialSuggestions: Suggestion
   if (suggestions.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap justify-center gap-2 pt-4">
+    <div className="flex justify-center gap-2 pt-3 overflow-x-auto">
       {suggestions.map((suggestion) => (
         <button
           key={suggestion.id}
           onClick={() => accept({ suggestion })}
           disabled={isGenerating}
           className={cn(
-            "px-4 py-2 text-[13px] rounded-2xl transition-colors duration-150",
+            "px-3 py-1 text-xs rounded-2xl transition-colors duration-150 whitespace-nowrap flex-shrink-0",
             "bg-secondary text-muted-foreground",
             "hover:bg-accent hover:text-foreground",
             "disabled:opacity-40 disabled:cursor-not-allowed"
@@ -160,7 +160,7 @@ export const MessageThreadFull = React.forwardRef<
 
       <GenerationStageIndicator />
 
-      <div className="bg-background pb-6 px-4">
+      <div className="bg-background pb-3 px-4">
         <div className="max-w-3xl mx-auto">
           <MessageInput variant="solid">
             <MessageInputTextarea
@@ -176,8 +176,8 @@ export const MessageThreadFull = React.forwardRef<
 
           <SuggestionsBar initialSuggestions={suggestions} />
 
-          <p className="mt-4 text-center text-[11px] text-muted-foreground/60">
-            RepoChat can review PRs, analyze code, and take GitHub actions
+          <p className="mt-2 text-center text-[11px] text-muted-foreground/60">
+            Review PRs · Analyze code · Post comments · Approve/request changes · Merge PRs · Browse repos · Search code · Security checks · View diffs · Explain code
           </p>
         </div>
       </div>

@@ -21,9 +21,9 @@ export type PlanStep = z.infer<typeof PlanStepSchema>;
 export type PlanViewProps = z.infer<typeof planViewSchema>;
 
 export function PlanView({
-  title,
+  title = "Plan",
   description,
-  steps,
+  steps = [],
   currentStep,
 }: PlanViewProps) {
   const completedCount = steps.filter((s) => s.status === "completed").length;

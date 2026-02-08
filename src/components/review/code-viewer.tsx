@@ -30,8 +30,8 @@ const getMonacoLanguage = (filePath: string, language?: string): string => {
 };
 
 export function CodeViewer({
-  filePath,
-  content,
+  filePath = "file.ts",
+  content = "",
   language,
   startLine = 1,
   highlightLines = [],

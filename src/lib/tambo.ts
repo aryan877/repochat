@@ -13,6 +13,7 @@ import { PRStatsChart, prStatsChartSchema } from "@/components/review/pr-stats-c
 import { ReviewHeatmap, reviewHeatmapSchema } from "@/components/review/review-heatmap";
 import { CodeFlow, codeFlowSchema } from "@/components/review/code-flow";
 
+
 // DEBUG: test with all components — if streaming fails, reduce this list
 export const components: TamboComponent[] = [
   {

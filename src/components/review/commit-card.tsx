@@ -18,25 +18,27 @@ export const commitCardSchema = z.object({
 export type CommitCardProps = z.infer<typeof commitCardSchema>;
 
 export function CommitCard({
-  sha,
-  message,
-  author,
+  sha = "",
+  message = "",
+  author = "unknown",
   authorAvatar,
-  date,
-  additions,
-  deletions,
-  filesChanged,
+  date = "",
+  additions = 0,
+  deletions = 0,
+  filesChanged = 0,
   url,
   verified,
 }: CommitCardProps) {
   const shortSha = sha.slice(0, 7);
-  const formattedDate = new Date(date).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const formattedDate = date
+    ? new Date(date).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
 
   const [title, ...bodyLines] = message.split("\n");
   const body = bodyLines.filter((l) => l.trim()).join("\n");

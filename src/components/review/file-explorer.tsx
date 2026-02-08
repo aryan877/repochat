@@ -93,7 +93,7 @@ function FileNodeComponent({
 export function FileExplorer({
   repoName,
   branch = "main",
-  tree,
+  tree = [],
   selectedPath,
   onFileSelect,
 }: FileExplorerProps) {

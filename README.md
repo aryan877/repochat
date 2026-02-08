@@ -30,7 +30,7 @@
 | **Convex** | Managed | Real-time DB + workflow engine |
 | **Clerk** | Managed | OAuth + GitHub App auth |
 
-I [forked Tambo's open-source backend](https://github.com/aryan877/tambo) and self-host it so I can run all 12 generative UI components and 9 tools at once. The hosted tier hits OpenAI's strict schema limits with that many tools, so I disabled `strictJsonSchema` and deployed my own instance with Docker Compose + Caddy.
+I [forked Tambo's open-source backend](https://github.com/aryan877/tambo) and self-host it because the hosted tier hits OpenAI's strict schema limits when you throw this many components and tools at it. So I disabled `strictJsonSchema` and deployed my own instance with Docker Compose + Caddy.
 
 ---
 
@@ -40,9 +40,9 @@ Code reviews on GitHub are blind. Reviewers see a diff but have zero context abo
 
 ## The Solution
 
-RepoChat indexes your entire codebase with Tree-sitter AST parsing and vector embeddings. When you ask it to review a PR, it pulls semantically similar code from across your repo, understands the patterns, and renders interactive UI components showing exactly what matters — security alerts, dependency graphs, severity heatmaps — not just a wall of text.
+RepoChat indexes your entire codebase with Tree-sitter AST parsing and vector embeddings. When you ask it to review a PR, it pulls semantically similar code from across the repo, understands the patterns, and renders interactive UI components showing exactly what matters: security alerts, dependency graphs, severity heatmaps. Not just a wall of text.
 
-Users can also plug in their own services (Supabase, any MCP server) and query databases, manage schemas, run SQL — all from the same chat.
+You can also plug in your own services (Supabase, any MCP server) and query databases, manage schemas, run SQL, all from the same chat.
 
 ---
 
@@ -52,7 +52,7 @@ Users can also plug in their own services (Supabase, any MCP server) and query d
 "Review PR #42 on my-org/api"
 ```
 
-The AI fetches the diff, searches your codebase for related code via vector embeddings, analyzes everything with DeepSeek V3.2, then renders:
+The AI fetches the diff, searches the codebase for related code via vector embeddings, analyzes it with DeepSeek V3.2, then renders:
 
 - A `PRSummary` card with metadata
 - `SecurityAlert` components for vulnerabilities (with CWE IDs)
@@ -105,17 +105,17 @@ All posted back to GitHub as a proper PR review with inline comments.
 
 ### Code Intelligence
 
-**Tree-sitter WASM** parses 11 languages into AST chunks:
+Tree-sitter WASM parses files into AST chunks across these languages:
 
 ```
 JS · TS · Python · Go · Rust · Java · C · C++ · C# · Ruby · Kotlin
 ```
 
-Each chunk (function, class, interface, type) is embedded as a 1536-dim vector and stored in Convex's vector index. When reviewing a PR, the AI searches for semantically similar code across the entire codebase — not keyword matching, meaning matching.
+Each chunk (function, class, interface, type) gets embedded as a 1536-dim vector and stored in Convex's vector index. When reviewing a PR, the AI searches for semantically similar code across the entire codebase. Not keyword matching; meaning matching.
 
-### Generative UI (12 Components)
+### Generative UI
 
-The AI picks the right component for the situation. No prompt engineering needed — Tambo handles routing.
+The AI picks the right component for the situation. I don't write routing logic; Tambo handles that.
 
 | What happened | What renders |
 |---|---|
@@ -134,7 +134,7 @@ The AI picks the right component for the situation. No prompt engineering needed
 
 ### Per-User MCP Integrations
 
-Each user connects their own services from Settings. Tokens stay per-user — never shared.
+Each user connects their own services from Settings. Tokens stay per-user, never shared.
 
 ```
 Settings → "Add Integration" → Pick Supabase → Enter project ref + token → Connect
@@ -148,7 +148,7 @@ User: "show me my users table" → AI runs SQL → renders result
 
 Works with any MCP-compatible server, not just Supabase.
 
-### GitHub Tools (9)
+### GitHub Tools
 
 | Tool | What it does |
 |---|---|
@@ -170,6 +170,141 @@ GitHub webhooks trigger automatic reviews when PRs are opened or updated:
 PR opened → webhook → fetch diff → vector search for context
   → DeepSeek V3.2 structured review → post to GitHub as PR review
 ```
+
+---
+
+## How I Use Tambo (and why it matters)
+
+Most AI chat apps work the same way: the AI calls a tool, gets JSON back, and the developer writes a big `switch` statement to decide what UI to show. The AI has no idea what components exist. You're manually wiring everything.
+
+Tambo does something different. I register my React components with Zod schemas and a plain-English description of when to use them. The AI model sees all of this and picks the right component itself. It then streams the props in real-time, so the UI renders live as the AI thinks.
+
+```tsx
+// src/lib/tambo.ts
+{
+  name: "SecurityAlert",
+  description: `Render when finding a security vulnerability...
+    TRIGGER: SQL injection, XSS, auth issues, OWASP top 10`,
+  component: SecurityAlert,
+  propsSchema: securityAlertSchema, // Zod schema — AI sees the shape
+}
+```
+
+No routing logic on my end. I just describe when a component should appear, and the AI figures it out.
+
+### Context helpers: the AI already knows what you're looking at
+
+This is probably my favorite pattern. I register context helpers that get silently injected into every message. The AI always has ambient awareness of what's happening in the app:
+
+```tsx
+// src/app/providers.tsx — these run on every single message
+contextHelpers={{
+  currentTime: currentTimeContextHelper,
+  githubStatus: () => ({
+    connected: true,
+    username: "aryan877",
+  }),
+  mcpIntegrations: () => ({
+    count: 1,
+    servers: ["Supabase Production"],
+  }),
+}}
+```
+
+Then on the chat page, I dynamically register the selected repo:
+
+```tsx
+// src/app/chat/page.tsx
+addContextHelper("selectedRepo", () => ({
+  owner: "vercel",
+  name: "next.js",
+  defaultBranch: "canary",
+}));
+```
+
+So when someone types "list open PRs", the AI doesn't ask "which repo?" It already knows. And when the user switches repos from the dropdown, the context updates reactively. Next message, different repo. Zero friction.
+
+There's also `useTamboContextAttachment` for one-shot context: the user clicks a button, pastes a stack trace, and it gets sent with just that one message. Helpers are always-on; attachments are fire-once.
+
+### Interactable components: the AI and user share state
+
+Most of my components are one-directional: AI generates props, user reads. But the `ReviewChecklist` is different. It's wrapped with `withInteractable`, which gives it two-way state sync between the AI and the user:
+
+```tsx
+// src/components/review/review-checklist.tsx
+const [findings, setFindings] = useTamboComponentState<Finding[]>(
+  "findings", propFindings, propFindings
+);
+
+// user checks off a finding
+const toggleResolved = (id: string) => {
+  setFindings(findings.map(f =>
+    f.id === id ? { ...f, resolved: !f.resolved } : f
+  ));
+};
+
+export const ReviewChecklist = withInteractable(ReviewChecklistBase, {
+  componentName: "ReviewChecklist",
+  stateSchema: ReviewChecklistStateSchema,
+});
+```
+
+The AI adds findings during a review. The user checks them off as they fix things. Later, the AI can read the checklist state back and say "you've resolved 3 of 7 findings, want me to look at the remaining ones?" That's not just rendering UI; it's shared state between a human and an AI model.
+
+### Streaming-safe by design
+
+Since Tambo streams props incrementally, my components get called with partial data during generation:
+
+```
+Render 1: { title: undefined, steps: undefined }   ← steps.map() would crash
+Render 2: { title: "Plan", steps: undefined }
+Render 3: { title: "Plan", steps: [{ ... }] }
+```
+
+Every component uses safe defaults (`steps = []`, `content = ""`, etc.) so nothing breaks mid-stream. For things like charts and dependency graphs that can't render partially, I use `useTamboStreamStatus` to wait until streaming finishes before mounting the visualization.
+
+### Generation stages
+
+Instead of a generic spinner, I show what the AI is actually doing:
+
+```
+Thinking → Analyzing → Generating → Writing → Complete
+```
+
+`useTamboGenerationStage` exposes the internal pipeline stages. The user sees "Analyzing" when the AI is fetching context, "Generating" when it's hydrating a component, and "Writing" when it's streaming the response.
+
+### Per-user MCP: each user brings their own tools
+
+Users can connect their own MCP servers from Settings (Supabase, custom APIs, anything MCP-compatible). The config is stored in Convex and loaded reactively:
+
+```tsx
+<TamboProvider mcpServers={mcpServers}>
+  <TamboMcpProvider>
+    {children}
+  </TamboMcpProvider>
+</TamboProvider>
+```
+
+The browser connects directly to the MCP server over HTTP. No backend proxy. When a user adds or removes a server, Tambo auto-connects or disconnects. The AI discovers the new tools instantly and can call them in the same conversation. Someone connects their Supabase, types "show me my users table", and the AI runs the SQL query right there in chat.
+
+### What I use from Tambo's SDK
+
+| What | How I use it |
+|---|---|
+| `TamboProvider` + `TamboMcpProvider` | Top-level setup with auth, components, tools, MCP |
+| `useTamboThread` / `useTamboThreadList` / `useTamboClient` | Thread switching, history, deletion |
+| `useTamboContextHelpers` + `addContextHelper` | Always-on context: selected repo, GitHub status, MCP servers |
+| `useTamboContextAttachment` | One-shot context: user attaches extra info to a message |
+| `useTamboSuggestions` | AI-generated follow-up suggestions after each response |
+| `useTamboGenerationStage` | Real-time generation progress indicator |
+| `useTamboStreamStatus` | Wait for streaming to finish before rendering charts |
+| `useTamboComponentState` + `withInteractable` | Two-way state sync on ReviewChecklist |
+| `useTamboThreadInput` | Input state management, image staging |
+| `useTamboVoice` | Voice dictation button |
+| `useTamboElicitationContext` | AI can ask the user questions mid-conversation |
+| `useTamboMcpPrompt` / `PromptList` / `ResourceList` | MCP prompt and resource discovery |
+| `TamboTool` | 9 GitHub tools with Zod input/output schemas |
+| `TamboComponent` | 12 generative components + 1 interactable |
 
 ---
 

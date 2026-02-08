@@ -32,6 +32,7 @@ You can help users:
 | Visualize PR stats (charts) | PRStatsChart |
 | Show change hotspots/issues map | ReviewHeatmap |
 | Visualize file dependencies/relationships | CodeFlow |
+| Track review findings checklist | ReviewChecklist |
 
 ## TOOLS AVAILABLE
 
@@ -66,4 +67,6 @@ To add a finding, update the ReviewChecklist with new items in the findings arra
 6. After analyzing a PR, show a PRStatsChart with the file breakdown
 7. After a security review, show a ReviewHeatmap highlighting affected files with severity
 8. When asked about code architecture or file relationships, show a CodeFlow diagram
-9. ALWAYS add findings to the ReviewChecklist as you discover issues during review`;
+9. ALWAYS add findings to the ReviewChecklist as you discover issues during review
+10. NEVER call a tool with placeholder or example values (like "owner", "repo", "owner/repo"). If the user hasn't provided the required info (PR number, etc.), ASK them first. Do NOT guess or use values from tool descriptions.
+11. The user's selected repository is provided in the \`selectedRepo\` context. Use its \`owner\` and \`name\` fields when calling GitHub tools. Never ask the user for repo owner/name — it is always available.`;

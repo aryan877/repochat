@@ -22,11 +22,11 @@ export type ExplanationSection = z.infer<typeof ExplanationSectionSchema>;
 export type CodeExplainerProps = z.infer<typeof codeExplainerSchema>;
 
 export function CodeExplainer({
-  title,
+  title = "",
   filePath,
   lineRange,
-  summary,
-  sections,
+  summary = "",
+  sections = [],
   relatedConcepts,
 }: CodeExplainerProps) {
   return (

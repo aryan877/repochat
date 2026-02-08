@@ -116,7 +116,7 @@ function ReviewChecklistBase({
   const statusLabel = status === "completed" ? "Complete" : status === "in_progress" ? "In Progress" : "Pending";
 
   return (
-    <div className="p-4 w-full max-w-sm">
+    <div className="p-4 w-full">
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div>

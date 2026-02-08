@@ -5,6 +5,24 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // Required for WebContainer SharedArrayBuffer support
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          {
+            key: "Cross-Origin-Opener-Policy",
+            value: "same-origin",
+          },
+          {
+            key: "Cross-Origin-Embedder-Policy",
+            value: "credentialless",
+          },
+        ],
+      },
+    ];
+  },
   // Stub optional peer deps from @standard-community/standard-json
   webpack: (config) => {
     config.resolve.alias = {

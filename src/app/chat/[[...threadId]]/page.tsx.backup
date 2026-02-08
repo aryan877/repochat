@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
-import { useLottie } from "lottie-react";
+import dynamic from "next/dynamic";
+
+// Dynamically import Lottie to avoid SSR issues
+const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
 
 // Import the animation data
-import arrowAnimation from "@/arrow-animation.json";
+import arrowAnimation from "/public/arrow.json";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { SignedIn, UserButton, useUser } from "@clerk/nextjs";
 import { useQuery } from "convex/react";
@@ -254,17 +257,6 @@ function ModeToggle({
   );
 }
 
-// Arrow animation component using useLottie hook
-const ArrowAnimation = () => {
-  const options = {
-    animationData: arrowAnimation,
-    loop: true,
-  };
-
-  const { View } = useLottie(options);
-
-  return <div className="w-[280px]" style={{ opacity: 0.35, filter: "brightness(1.5)" }}>{View}</div>;
-};
 
 export default function ChatPage() {
   const router = useRouter();
@@ -744,8 +736,12 @@ export default function ChatPage() {
           ) : (
             <div className="flex-1 flex items-center justify-center pt-14 relative">
               {/* Animated arrow pointing to repo dropdown */}
-              <div className="absolute top-16 left-6 pointer-events-none">
-                <ArrowAnimation />
+              <div className="absolute top-4 left-8 pointer-events-none w-1/2 h-1/2">
+                <Lottie
+                  animationData={arrowAnimation}
+                  loop={true}
+                  style={{ opacity: 0.25 }}
+                />
               </div>
 
               <div className="text-center max-w-md px-6 relative">

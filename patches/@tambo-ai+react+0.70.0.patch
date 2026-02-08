@@ -1,0 +1,196 @@
+diff --git a/node_modules/@tambo-ai/react/dist/hooks/use-component-state.js b/node_modules/@tambo-ai/react/dist/hooks/use-component-state.js
+index b8ae67d..00357d2 100644
+--- a/node_modules/@tambo-ai/react/dist/hooks/use-component-state.js
++++ b/node_modules/@tambo-ai/react/dist/hooks/use-component-state.js
+@@ -106,7 +106,6 @@ function useTamboComponentState(keyName, initialValue, setFromProp, debounceTime
+     (0, react_1.useEffect)(() => {
+         if (!componentId)
+             return;
+-        // only update if different
+         setLocalState((prev) => (0, fast_equals_1.deepEqual)(prev, interactableState) ? prev : interactableState);
+     }, [componentId, interactableState]);
+     // For editable fields that are set from a prop to allow streaming updates, don't overwrite a fetched state value set from the thread message with prop value on initial load.
+diff --git a/node_modules/@tambo-ai/react/dist/providers/tambo-interactable-provider.js b/node_modules/@tambo-ai/react/dist/providers/tambo-interactable-provider.js
+index 219c682..ed339fd 100644
+--- a/node_modules/@tambo-ai/react/dist/providers/tambo-interactable-provider.js
++++ b/node_modules/@tambo-ai/react/dist/providers/tambo-interactable-provider.js
+@@ -214,19 +214,27 @@ const TamboInteractableProvider = ({ children, }) => {
+             return `Warning: No state values provided for component with ID ${componentId}.`;
+         }
+         setInteractableComponents((components = []) => {
+-            const component = components.find((c) => c.id === componentId);
+-            if (!component)
++            let component = components.find((c) => c.id === componentId);
++            // Fallback: if exact ID not found (stale tool after Strict Mode remount),
++            // match by name prefix (e.g. "ReviewChecklist-qyr" → find "ReviewChecklist-n7l")
++            if (!component) {
++                const namePrefix = componentId.replace(/-[a-z0-9]+$/, '');
++                component = components.find((c) => c.name === namePrefix);
++            }
++            if (!component) {
+                 return components;
++            }
++            const matchedId = component.id;
+             const prevState = component.state ?? {};
+             const updatedState = { ...prevState, ...newState };
+-            if ((0, fast_equals_1.deepEqual)(prevState, updatedState))
++            if ((0, fast_equals_1.deepEqual)(prevState, updatedState)) {
+                 return components;
+-            // TODO(lachieh): validate state against schema?
++            }
+             const updated = {
+                 ...component,
+                 state: updatedState,
+             };
+-            return components.map((c) => (c.id === componentId ? updated : c));
++            return components.map((c) => (c.id === matchedId ? updated : c));
+         });
+         return "Updated successfully";
+     }, []);
+diff --git a/node_modules/@tambo-ai/react/esm/hoc/with-tambo-interactable.js b/node_modules/@tambo-ai/react/esm/hoc/with-tambo-interactable.js
+index fb5e50f..06f5ed6 100644
+--- a/node_modules/@tambo-ai/react/esm/hoc/with-tambo-interactable.js
++++ b/node_modules/@tambo-ai/react/esm/hoc/with-tambo-interactable.js
+@@ -2,45 +2,13 @@
+ import React, { useCallback, useEffect, useRef, useState } from "react";
+ import { TamboMessageProvider } from "../hooks/use-current-message";
+ import { useTamboInteractable } from "../providers/tambo-interactable-provider";
+-/**
+- * Higher-Order Component that makes any component interactable by tambo.
+- * @param WrappedComponent - The component to make interactable
+- * @param config - Configuration for the interactable component
+- * @returns A new component that is automatically registered as interactable
+- * @example
+- * ```tsx
+- * const MyNote: React.FC<{ title: string; content: string }> = ({ title, content }) => {
+- *   const [isPinned, setIsPinned] = useTamboComponentState("isPinned", false);
+- *   return (
+- *     <div style={{ border: isPinned ? "2px solid gold" : "1px solid gray", order: isPinned ? -1 : 0 }}>
+- *       <h2>{title}</h2>
+- *       <p>{content}</p>
+- *     </div>
+- *   );
+- * };
+- *
+- * const MyInteractableNote = withTamboInteractable(MyNote, {
+- *   componentName: "MyNote",
+- *   description: "A note component",
+- *   propsSchema: z.object({
+- *     title: z.string(),
+- *     content: z.string(),
+- *   }),
+- *  stateSchema: z.object({
+- *    isPinned: z.boolean(),
+- *  }),
+- * });
+- *
+- * // Usage
+- * <MyInteractableNote title="My Note" content="This is my note" />
+- * ```
+- */
+ export function withTamboInteractable(WrappedComponent, config) {
+     const displayName = WrappedComponent.displayName ?? WrappedComponent.name ?? "Component";
+     const TamboInteractableWrapper = (props) => {
+-        const { addInteractableComponent, updateInteractableComponentProps, getInteractableComponent, } = useTamboInteractable();
++        const { addInteractableComponent, removeInteractableComponent, updateInteractableComponentProps, getInteractableComponent, } = useTamboInteractable();
+         const [interactableId, setInteractableId] = useState(null);
+         const isInitialized = useRef(false);
++        const interactableIdRef = useRef(null);
+         const lastSerializedProps = useRef({});
+         // Extract interactable-specific props from component props
+         const { interactableId: _providedId, // Reserved for future use
+@@ -50,10 +18,9 @@ export function withTamboInteractable(WrappedComponent, config) {
+             ? getInteractableComponent(interactableId)
+             : null;
+         // Use the props from the interactable component if available, otherwise use the passed props
+-        // We need to be careful not to create a loop, so we only use stored props if they're different from passed props
+         const effectiveProps = currentInteractable?.props ?? componentProps;
+-        // Memoize the registration function
+-        const registerComponent = useCallback(() => {
++        // Register on mount, clean up on unmount
++        useEffect(() => {
+             if (!isInitialized.current) {
+                 const id = addInteractableComponent({
+                     name: config.componentName,
+@@ -64,14 +31,19 @@ export function withTamboInteractable(WrappedComponent, config) {
+                     stateSchema: config.stateSchema,
+                 });
+                 setInteractableId(id);
++                interactableIdRef.current = id;
+                 onInteractableReady?.(id);
+                 isInitialized.current = true;
+             }
+-        }, [addInteractableComponent, componentProps, onInteractableReady]);
+-        // Register the component as interactable on mount (only once)
+-        useEffect(() => {
+-            registerComponent();
+-        }, [registerComponent]);
++            return () => {
++                if (interactableIdRef.current) {
++                    removeInteractableComponent(interactableIdRef.current);
++                    interactableIdRef.current = null;
++                    isInitialized.current = false;
++                }
++            };
++        // eslint-disable-next-line react-hooks/exhaustive-deps
++        }, []);
+         // Update the interactable component when props change from parent
+         useEffect(() => {
+             if (interactableId && isInitialized.current) {
+@@ -95,7 +67,6 @@ export function withTamboInteractable(WrappedComponent, config) {
+             return React.createElement(WrappedComponent, { ...effectiveProps });
+         }
+         // Create a minimal message with interactable metadata
+-        // This allows useTamboCurrentComponent to work with standalone interactable components
+         const minimalMessage = {
+             id: interactableId,
+             role: "assistant",
+diff --git a/node_modules/@tambo-ai/react/esm/hooks/use-component-state.js b/node_modules/@tambo-ai/react/esm/hooks/use-component-state.js
+index d82e528..7e496df 100644
+--- a/node_modules/@tambo-ai/react/esm/hooks/use-component-state.js
++++ b/node_modules/@tambo-ai/react/esm/hooks/use-component-state.js
+@@ -103,7 +103,6 @@ export function useTamboComponentState(keyName, initialValue, setFromProp, debou
+     useEffect(() => {
+         if (!componentId)
+             return;
+-        // only update if different
+         setLocalState((prev) => deepEqual(prev, interactableState) ? prev : interactableState);
+     }, [componentId, interactableState]);
+     // For editable fields that are set from a prop to allow streaming updates, don't overwrite a fetched state value set from the thread message with prop value on initial load.
+diff --git a/node_modules/@tambo-ai/react/esm/providers/tambo-interactable-provider.js b/node_modules/@tambo-ai/react/esm/providers/tambo-interactable-provider.js
+index a8c9e54..ced6615 100644
+--- a/node_modules/@tambo-ai/react/esm/providers/tambo-interactable-provider.js
++++ b/node_modules/@tambo-ai/react/esm/providers/tambo-interactable-provider.js
+@@ -178,19 +178,27 @@ export const TamboInteractableProvider = ({ children, }) => {
+             return `Warning: No state values provided for component with ID ${componentId}.`;
+         }
+         setInteractableComponents((components = []) => {
+-            const component = components.find((c) => c.id === componentId);
+-            if (!component)
++            let component = components.find((c) => c.id === componentId);
++            // Fallback: if exact ID not found (stale tool after Strict Mode remount),
++            // match by name prefix (e.g. "ReviewChecklist-qyr" → find "ReviewChecklist-n7l")
++            if (!component) {
++                const namePrefix = componentId.replace(/-[a-z0-9]+$/, '');
++                component = components.find((c) => c.name === namePrefix);
++            }
++            if (!component) {
+                 return components;
++            }
++            const matchedId = component.id;
+             const prevState = component.state ?? {};
+             const updatedState = { ...prevState, ...newState };
+-            if (deepEqual(prevState, updatedState))
++            if (deepEqual(prevState, updatedState)) {
+                 return components;
+-            // TODO(lachieh): validate state against schema?
++            }
+             const updated = {
+                 ...component,
+                 state: updatedState,
+             };
+-            return components.map((c) => (c.id === componentId ? updated : c));
++            return components.map((c) => (c.id === matchedId ? updated : c));
+         });
+         return "Updated successfully";
+     }, []);

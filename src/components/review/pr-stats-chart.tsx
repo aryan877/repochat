@@ -172,3 +172,12 @@ export function PRStatsChart({
     </div>
   );
 }
+
+export const tamboRegistration = {
+  name: "PRStatsChart",
+  description: `Render when visualizing PR statistics as charts. Shows bar charts of per-file
+additions/deletions or pie charts of change distribution across files.
+TRIGGER: "Show PR stats", "Visualize the changes", "Chart the file changes", after analyzing a PR`,
+  component: PRStatsChart,
+  propsSchema: prStatsChartSchema,
+};

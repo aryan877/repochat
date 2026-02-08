@@ -253,3 +253,12 @@ export const ReviewChecklist = withInteractable(ReviewChecklistBase, {
 });
 
 export default ReviewChecklist;
+
+export const tamboRegistration = {
+  name: "ReviewChecklist",
+  description: `Render to track code review findings as a checklist. Shows grouped findings by type
+(security/bug/refactor/style/performance) with severity levels and resolution toggles. User can mark items resolved.
+TRIGGER: After reviewing a PR, always render this with all discovered findings. Include security issues, bugs, refactoring opportunities, style issues, and performance concerns.`,
+  component: ReviewChecklist,
+  propsSchema: ReviewChecklistSchema,
+};

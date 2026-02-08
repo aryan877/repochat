@@ -155,3 +155,12 @@ export function CodeViewer({
 }
 
 export default CodeViewer;
+
+export const tamboRegistration = {
+  name: "CodeViewer",
+  description: `Render when displaying file contents with syntax highlighting.
+Shows full file or code section with line numbers.
+TRIGGER: "Show me the file", "What's in auth.ts?", viewing specific code`,
+  component: CodeViewer,
+  propsSchema: codeViewerSchema,
+};

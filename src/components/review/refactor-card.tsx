@@ -123,3 +123,12 @@ export function RefactorCard({
     </div>
   );
 }
+
+export const tamboRegistration = {
+  name: "RefactorCard",
+  description: `Render when suggesting code improvements. Shows before/after code comparison
+with explanation of why the refactoring is beneficial.
+TRIGGER: Code smell found, performance improvement, cleaner pattern available`,
+  component: RefactorCard,
+  propsSchema: refactorCardSchema,
+};

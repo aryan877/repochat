@@ -102,3 +102,12 @@ export function CodeExplainer({
 }
 
 export default CodeExplainer;
+
+export const tamboRegistration = {
+  name: "CodeExplainer",
+  description: `Render when explaining how code works. Shows structured explanation with
+sections for overview, details, warnings, and tips.
+TRIGGER: "Explain this function", "How does this work?", "What does this do?"`,
+  component: CodeExplainer,
+  propsSchema: codeExplainerSchema,
+};

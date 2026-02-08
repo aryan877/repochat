@@ -120,3 +120,12 @@ export function CommitCard({
 }
 
 export default CommitCard;
+
+export const tamboRegistration = {
+  name: "CommitCard",
+  description: `Render when showing commit information. Displays commit message, author,
+date, SHA, and change statistics.
+TRIGGER: After committing changes, "Show commit", viewing commit history`,
+  component: CommitCard,
+  propsSchema: commitCardSchema,
+};

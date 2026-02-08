@@ -146,3 +146,12 @@ export function PRSummary({
     </div>
   );
 }
+
+export const tamboRegistration = {
+  name: "PRSummary",
+  description: `Render when reviewing a pull request. Shows PR metadata including title, author,
+state (open/closed/merged), branches, additions/deletions count, and file changes.
+TRIGGER: "Review PR #X", "What's in this PR?", "Analyze pull request"`,
+  component: PRSummary,
+  propsSchema: prSummarySchema,
+};

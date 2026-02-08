@@ -1019,6 +1019,12 @@ const MessageRenderedComponentArea = React.forwardRef<
     return null;
   }
 
+  // Guard against invalid renderedComponent values during streaming
+  // (partial hydration can produce non-element values like raw strings)
+  if (!React.isValidElement(message.renderedComponent)) {
+    return null;
+  }
+
   return (
     <div
       ref={ref}

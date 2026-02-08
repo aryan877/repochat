@@ -1,6 +1,6 @@
 "use client";
 
-import { components } from "@/lib/tambo";
+import { components } from "@/components/review";
 import { createGitHubTools } from "@/lib/tools";
 import { ClerkProvider, useAuth, useUser } from "@clerk/nextjs";
 import { currentTimeContextHelper, TamboProvider } from "@tambo-ai/react";

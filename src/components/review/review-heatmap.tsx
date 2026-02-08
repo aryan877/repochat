@@ -164,3 +164,12 @@ export function ReviewHeatmap({
     </div>
   );
 }
+
+export const tamboRegistration = {
+  name: "ReviewHeatmap",
+  description: `Render when showing which files have the most changes or issues. Displays a
+visual heatmap/grid where larger, redder tiles indicate more changes or higher severity issues.
+TRIGGER: "Show hotspots", "Which files changed most?", "Where are the issues?", after a security review`,
+  component: ReviewHeatmap,
+  propsSchema: reviewHeatmapSchema,
+};

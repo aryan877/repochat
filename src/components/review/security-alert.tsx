@@ -122,3 +122,12 @@ export function SecurityAlert({
     </div>
   );
 }
+
+export const tamboRegistration = {
+  name: "SecurityAlert",
+  description: `Render when finding a security vulnerability in the code. Shows severity level
+(critical/high/medium/low), vulnerability type, affected code, and fix recommendation.
+TRIGGER: Finding SQL injection, XSS, auth issues, secrets exposure, OWASP top 10 vulnerabilities`,
+  component: SecurityAlert,
+  propsSchema: securityAlertSchema,
+};

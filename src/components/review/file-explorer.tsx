@@ -149,3 +149,12 @@ export function FileExplorer({
 }
 
 export default FileExplorer;
+
+export const tamboRegistration = {
+  name: "FileExplorer",
+  description: `Render when showing repository structure. Displays file tree with
+folders, files, and change indicators for modified files.
+TRIGGER: "Show repo structure", "What files are in this project?", navigating codebase`,
+  component: FileExplorer,
+  propsSchema: fileExplorerSchema,
+};

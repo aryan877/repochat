@@ -246,3 +246,12 @@ export function CodeFlow({
     </div>
   );
 }
+
+export const tamboRegistration = {
+  name: "CodeFlow",
+  description: `Render when visualizing code dependencies and file relationships. Shows an interactive
+graph with files as nodes and import/dependency relationships as edges. Nodes are color-coded by severity.
+TRIGGER: "Show code flow", "Visualize dependencies", "How are files connected?", "Show file relationships"`,
+  component: CodeFlow,
+  propsSchema: codeFlowSchema,
+};

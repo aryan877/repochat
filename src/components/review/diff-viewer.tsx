@@ -159,3 +159,12 @@ export function DiffViewer({
 }
 
 export default DiffViewer;
+
+export const tamboRegistration = {
+  name: "DiffViewer",
+  description: `Render when showing code changes/diffs. Displays unified diff format with
+additions (green), deletions (red), and context lines.
+TRIGGER: "Show the changes", "What was modified?", showing file patches`,
+  component: DiffViewer,
+  propsSchema: diffViewerSchema,
+};

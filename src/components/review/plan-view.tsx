@@ -137,3 +137,12 @@ export function PlanView({
 }
 
 export default PlanView;
+
+export const tamboRegistration = {
+  name: "PlanView",
+  description: `Render when presenting a multi-step plan or task breakdown. Shows numbered
+steps with status (pending/in_progress/completed) and affected files.
+TRIGGER: "Here's my plan", "I'll do these steps", outlining changes to make`,
+  component: PlanView,
+  propsSchema: planViewSchema,
+};

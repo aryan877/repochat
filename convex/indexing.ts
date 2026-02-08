@@ -1,67 +1,45 @@
 "use node";
 
 import { v } from "convex/values";
-import { internalAction } from "./_generated/server";
+import fs from "fs";
+import path from "path";
+import type Parser from "web-tree-sitter";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
-import path from "path";
-import fs from "fs";
-import type { Parser, Language, Query, Node } from "web-tree-sitter";
+import { internalAction } from "./_generated/server";
+import { shouldSkipPath, computeFileDiff, type GitHubTreeItem } from "./shared";
 
-// ============================================================================
-// Tree-sitter Setup - Using official language packages with built-in queries
-// ============================================================================
+/* eslint-disable @typescript-eslint/no-require-imports */
+require("tree-sitter-wasms/package.json");
+/* eslint-enable @typescript-eslint/no-require-imports */
 
-// Extension → Language package name mapping
-// These packages include: WASM grammar + queries/tags.scm
-const EXT_TO_PACKAGE: Record<string, string> = {
-  // JavaScript/TypeScript
-  ".js": "tree-sitter-javascript",
-  ".jsx": "tree-sitter-javascript",
-  ".mjs": "tree-sitter-javascript",
-  ".ts": "tree-sitter-typescript/typescript",
-  ".tsx": "tree-sitter-typescript/tsx",
-  // Python
-  ".py": "tree-sitter-python",
-  // Go
-  ".go": "tree-sitter-go",
-  // Rust
-  ".rs": "tree-sitter-rust",
-  // Java
-  ".java": "tree-sitter-java",
-  // C/C++
-  ".c": "tree-sitter-c",
-  ".h": "tree-sitter-c",
-  ".cpp": "tree-sitter-cpp",
-  ".cc": "tree-sitter-cpp",
-  ".cxx": "tree-sitter-cpp",
-  ".hpp": "tree-sitter-cpp",
-  // C#
-  ".cs": "tree-sitter-c-sharp",
-  // Ruby
-  ".rb": "tree-sitter-ruby",
-  // Kotlin
-  ".kt": "tree-sitter-kotlin",
-  ".kts": "tree-sitter-kotlin",
-  // Shell/Bash
-  ".sh": "tree-sitter-bash",
-  ".bash": "tree-sitter-bash",
+const EXT_TO_LANG: Record<string, { wasm: string; query?: string }> = {
+  ".js": { wasm: "tree-sitter-javascript", query: "javascript" },
+  ".jsx": { wasm: "tree-sitter-javascript", query: "javascript" },
+  ".mjs": { wasm: "tree-sitter-javascript", query: "javascript" },
+  ".ts": { wasm: "tree-sitter-typescript", query: "typescript" },
+  ".tsx": { wasm: "tree-sitter-tsx", query: "typescript" },
+  ".py": { wasm: "tree-sitter-python", query: "python" },
+  ".go": { wasm: "tree-sitter-go", query: "go" },
+  ".rs": { wasm: "tree-sitter-rust", query: "rust" },
+  ".java": { wasm: "tree-sitter-java", query: "java" },
+  ".c": { wasm: "tree-sitter-c", query: "c" },
+  ".h": { wasm: "tree-sitter-c", query: "c" },
+  ".cpp": { wasm: "tree-sitter-cpp", query: "cpp" },
+  ".cc": { wasm: "tree-sitter-cpp", query: "cpp" },
+  ".cxx": { wasm: "tree-sitter-cpp", query: "cpp" },
+  ".hpp": { wasm: "tree-sitter-cpp", query: "cpp" },
+  ".cs": { wasm: "tree-sitter-c_sharp", query: "c-sharp" },
+  ".rb": { wasm: "tree-sitter-ruby", query: "ruby" },
+  ".kt": { wasm: "tree-sitter-kotlin" },
+  ".kts": { wasm: "tree-sitter-kotlin" },
+  ".sh": { wasm: "tree-sitter-bash" },
+  ".bash": { wasm: "tree-sitter-bash" },
 };
 
-// Skip patterns for indexing
-const SKIP_PATTERNS = [
-  "node_modules", ".git", ".next", "dist", "build", "__pycache__",
-  ".venv", "venv", ".cache", "coverage", ".DS_Store",
-  "package-lock.json", "yarn.lock", "pnpm-lock.yaml", ".min.js",
-];
-
-function getLanguagePackage(filePath: string): string | null {
+function getLanguageInfo(filePath: string): { wasm: string; query?: string } | null {
   const ext = path.extname(filePath).toLowerCase();
-  return EXT_TO_PACKAGE[ext] || null;
-}
-
-function shouldSkip(filePath: string): boolean {
-  return SKIP_PATTERNS.some((p) => filePath.includes(p));
+  return EXT_TO_LANG[ext] || null;
 }
 
 // ============================================================================
@@ -71,18 +49,22 @@ function shouldSkip(filePath: string): boolean {
 // Module-level cache
 let ParserClass: typeof Parser | null = null;
 let initialized = false;
-const parserCache = new Map<string, { parser: Parser; language: Language; query: Query | null }>();
+const parserCache = new Map<
+  string,
+  { parser: Parser; language: Parser.Language; query: Parser.Query | null }
+>();
 
 async function initTreeSitter(): Promise<typeof Parser | null> {
   if (initialized && ParserClass) return ParserClass;
 
   try {
     const mod = await import("web-tree-sitter");
-    ParserClass = mod.Parser;
+    ParserClass = mod.default || mod;
 
-    const wasmPath = require.resolve("web-tree-sitter/web-tree-sitter.wasm");
+    const mainEntry = require.resolve("web-tree-sitter");
+    const wasmPath = path.join(path.dirname(mainEntry), "tree-sitter.wasm");
     await ParserClass.init({
-      locateFile: (file: string) => (file === "tree-sitter.wasm" ? wasmPath : file),
+      locateFile: () => wasmPath,
     });
 
     initialized = true;
@@ -93,9 +75,13 @@ async function initTreeSitter(): Promise<typeof Parser | null> {
   }
 }
 
-async function getParserWithQuery(packageName: string): Promise<{ parser: Parser; query: Query | null } | null> {
-  if (parserCache.has(packageName)) {
-    const cached = parserCache.get(packageName)!;
+async function getParserWithQuery(
+  wasmName: string,
+  queryName?: string,
+): Promise<{ parser: Parser; query: Parser.Query | null } | null> {
+  const cacheKey = `${wasmName}:${queryName || ""}`;
+  if (parserCache.has(cacheKey)) {
+    const cached = parserCache.get(cacheKey)!;
     return { parser: cached.parser, query: cached.query };
   }
 
@@ -103,52 +89,40 @@ async function getParserWithQuery(packageName: string): Promise<{ parser: Parser
   if (!TSParser) return null;
 
   try {
-    // Resolve the package path
-    let packagePath: string;
-    let wasmFile: string;
-
-    if (packageName.includes("/")) {
-      // TypeScript has subfolders: tree-sitter-typescript/typescript or /tsx
-      const [pkg, sub] = packageName.split("/");
-      packagePath = require.resolve(`${pkg}/package.json`).replace("/package.json", "");
-      wasmFile = `tree-sitter-${sub}.wasm`;
-    } else {
-      packagePath = require.resolve(`${packageName}/package.json`).replace("/package.json", "");
-      wasmFile = `${packageName}.wasm`;
-    }
-
-    // Load WASM
-    const wasmPath = path.join(packagePath, wasmFile);
+    const wasmsDir = path.join(
+      path.dirname(require.resolve("tree-sitter-wasms/package.json")),
+      "out",
+    );
+    const wasmPath = path.join(wasmsDir, `${wasmName}.wasm`);
     const wasmBuffer = fs.readFileSync(wasmPath);
 
-    // Import Language class dynamically
-    const { Language: TSLanguage, Query: TSQuery } = await import("web-tree-sitter");
+    const TSMod = await import("web-tree-sitter");
+    const TSLanguage = (TSMod.default || TSMod).Language;
     const language = await TSLanguage.load(wasmBuffer);
 
-    // Create parser
     const parser = new TSParser();
     parser.setLanguage(language);
 
-    // Load tags.scm query (for automatic definition extraction)
-    let query: Query | null = null;
-    try {
-      const tagsPath = path.join(packagePath, "queries", "tags.scm");
-      if (fs.existsSync(tagsPath)) {
-        const tagsQuery = fs.readFileSync(tagsPath, "utf-8");
-        // Filter out unsupported predicates for web-tree-sitter
-        const cleanedQuery = tagsQuery
-          .replace(/#strip!.*$/gm, "")
-          .replace(/#select-adjacent!.*$/gm, "");
-        query = new TSQuery(language, cleanedQuery);
+    let query: Parser.Query | null = null;
+    if (queryName) {
+      try {
+        const tagsPath = path.join(__dirname, "queries", `${queryName}.scm`);
+        if (fs.existsSync(tagsPath)) {
+          const tagsQuery = fs.readFileSync(tagsPath, "utf-8");
+          const cleanedQuery = tagsQuery
+            .replace(/#strip!.*$/gm, "")
+            .replace(/#select-adjacent!.*$/gm, "");
+          query = language.query(cleanedQuery);
+        }
+      } catch (qErr) {
+        console.log(`No query for ${queryName}:`, qErr);
       }
-    } catch (qErr) {
-      console.log(`No tags.scm query for ${packageName}:`, qErr);
     }
 
-    parserCache.set(packageName, { parser, language, query });
+    parserCache.set(cacheKey, { parser, language, query });
     return { parser, query };
   } catch (err) {
-    console.error(`Failed to load ${packageName}:`, err);
+    console.error(`Failed to load ${wasmName}:`, err);
     return null;
   }
 }
@@ -158,7 +132,15 @@ async function getParserWithQuery(packageName: string): Promise<{ parser: Parser
 // ============================================================================
 
 interface CodeChunk {
-  chunkType: "function" | "class" | "method" | "interface" | "type" | "variable" | "import" | "file_summary";
+  chunkType:
+    | "function"
+    | "class"
+    | "method"
+    | "interface"
+    | "type"
+    | "variable"
+    | "import"
+    | "file_summary";
   name: string;
   code: string;
   startLine: number;
@@ -169,7 +151,7 @@ interface CodeChunk {
 function extractChunksWithQuery(
   sourceCode: string,
   parser: Parser,
-  query: Query | null
+  query: Parser.Query | null,
 ): CodeChunk[] {
   const tree = parser.parse(sourceCode);
   if (!tree) return [];
@@ -182,17 +164,29 @@ function extractChunksWithQuery(
 
     for (const match of matches) {
       // Find the definition and name captures
-      let definitionNode: Node | undefined;
-      let nameNode: Node | undefined;
-      let docNode: Node | undefined;
+      let definitionNode: Parser.SyntaxNode | undefined;
+      let nameNode: Parser.SyntaxNode | undefined;
+      let docNode: Parser.SyntaxNode | undefined;
       let chunkType: CodeChunk["chunkType"] = "function";
 
       for (const capture of match.captures) {
         if (capture.name.startsWith("definition.")) {
           definitionNode = capture.node;
           // Extract type from capture name: definition.function → function
-          const type = capture.name.replace("definition.", "") as CodeChunk["chunkType"];
-          if (["function", "class", "method", "interface", "type", "variable"].includes(type)) {
+          const type = capture.name.replace(
+            "definition.",
+            "",
+          ) as CodeChunk["chunkType"];
+          if (
+            [
+              "function",
+              "class",
+              "method",
+              "interface",
+              "type",
+              "variable",
+            ].includes(type)
+          ) {
             chunkType = type;
           }
         } else if (capture.name === "name") {
@@ -235,20 +229,36 @@ function extractChunksWithQuery(
 }
 
 // Simple fallback for when queries aren't available
-function extractChunksFallback(node: Node, chunks: CodeChunk[], depth = 0): void {
+function extractChunksFallback(
+  node: Parser.SyntaxNode,
+  chunks: CodeChunk[],
+  depth = 0,
+): void {
   if (depth > 3) return;
 
   const t = node.type.toLowerCase();
 
   // Detect definitions by naming convention (tree-sitter grammars are consistent)
   let chunkType: CodeChunk["chunkType"] | null = null;
-  if (t.includes("function") || t.includes("method") || t === "arrow_function") {
+  if (
+    t.includes("function") ||
+    t.includes("method") ||
+    t === "arrow_function"
+  ) {
     chunkType = t.includes("method") ? "method" : "function";
   } else if (t.includes("class") && !t.includes("interface")) {
     chunkType = "class";
-  } else if (t.includes("interface") || t.includes("trait") || t.includes("protocol")) {
+  } else if (
+    t.includes("interface") ||
+    t.includes("trait") ||
+    t.includes("protocol")
+  ) {
     chunkType = "interface";
-  } else if (t.includes("type_alias") || t.includes("struct") || t.includes("enum")) {
+  } else if (
+    t.includes("type_alias") ||
+    t.includes("struct") ||
+    t.includes("enum")
+  ) {
     chunkType = "type";
   }
 
@@ -256,7 +266,11 @@ function extractChunksFallback(node: Node, chunks: CodeChunk[], depth = 0): void
     // Extract name from first identifier child
     let name = "anonymous";
     for (const child of node.children) {
-      if (["identifier", "type_identifier", "property_identifier"].includes(child.type)) {
+      if (
+        ["identifier", "type_identifier", "property_identifier"].includes(
+          child.type,
+        )
+      ) {
         name = child.text;
         break;
       }
@@ -281,11 +295,14 @@ function extractChunksFallback(node: Node, chunks: CodeChunk[], depth = 0): void
 // Main Extraction Function
 // ============================================================================
 
-async function extractChunks(sourceCode: string, filePath: string): Promise<CodeChunk[]> {
-  const packageName = getLanguagePackage(filePath);
-  if (!packageName) return [];
+async function extractChunks(
+  sourceCode: string,
+  filePath: string,
+): Promise<CodeChunk[]> {
+  const langInfo = getLanguageInfo(filePath);
+  if (!langInfo) return [];
 
-  const result = await getParserWithQuery(packageName);
+  const result = await getParserWithQuery(langInfo.wasm, langInfo.query);
   if (!result) return [];
 
   return extractChunksWithQuery(sourceCode, result.parser, result.query);
@@ -295,7 +312,10 @@ async function extractChunks(sourceCode: string, filePath: string): Promise<Code
 // OpenRouter API Functions
 // ============================================================================
 
-async function generateDocstring(code: string, language: string): Promise<string> {
+async function generateDocstring(
+  code: string,
+  language: string,
+): Promise<string> {
   const key = process.env.OPENROUTER_API_KEY;
   if (!key) return `${language} code`;
 
@@ -309,10 +329,12 @@ async function generateDocstring(code: string, language: string): Promise<string
       },
       body: JSON.stringify({
         model: "google/gemini-2.0-flash-001",
-        messages: [{
-          role: "user",
-          content: `Write a brief 1-2 sentence description of what this ${language} code does. Be concise.\n\n\`\`\`${language}\n${code.slice(0, 2000)}\n\`\`\``,
-        }],
+        messages: [
+          {
+            role: "user",
+            content: `Write a brief 1-2 sentence description of what this ${language} code does. Be concise.\n\n\`\`\`${language}\n${code.slice(0, 2000)}\n\`\`\``,
+          },
+        ],
         max_tokens: 100,
       }),
     });
@@ -326,17 +348,17 @@ async function generateDocstring(code: string, language: string): Promise<string
 }
 
 async function generateEmbedding(text: string): Promise<number[]> {
-  const key = process.env.OPENROUTER_API_KEY;
-  if (!key) throw new Error("OPENROUTER_API_KEY not configured");
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) throw new Error("OPENAI_API_KEY not configured");
 
-  const res = await fetch("https://openrouter.ai/api/v1/embeddings", {
+  const res = await fetch("https://api.openai.com/v1/embeddings", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "openai/text-embedding-3-small",
+      model: "text-embedding-3-small",
       input: text.slice(0, 8000),
     }),
   });
@@ -354,73 +376,146 @@ export const startIndexing = internalAction({
   args: {
     repoId: v.id("repos"),
     branch: v.string(),
-    triggerType: v.union(v.literal("manual"), v.literal("push"), v.literal("initial")),
+    triggerType: v.union(
+      v.literal("manual"),
+      v.literal("push"),
+      v.literal("initial"),
+    ),
     commitSha: v.optional(v.string()),
   },
   handler: async (ctx, { repoId, branch, triggerType, commitSha }) => {
-    const jobId = await ctx.runMutation(internal.indexingMutations.createIndexingJob, {
-      repoId, branch, triggerType, commitSha,
-    });
+    const jobId = await ctx.runMutation(
+      internal.indexingMutations.createIndexingJob,
+      {
+        repoId,
+        branch,
+        triggerType,
+        commitSha,
+      },
+    );
 
     try {
-      const repo = await ctx.runQuery(internal.indexingMutations.getRepoInternal, { repoId });
+      const repo = await ctx.runQuery(
+        internal.indexingMutations.getRepoInternal,
+        { repoId },
+      );
       if (!repo) throw new Error("Repo not found");
 
-      const installationId = await ctx.runQuery(internal.repos.getRepoInstallationId, { repoId });
+      const installationId = await ctx.runQuery(
+        internal.repos.getRepoInstallationId,
+        { repoId },
+      );
       if (!installationId) throw new Error("Installation not found");
 
       await ctx.runMutation(internal.indexingMutations.updateIndexingJob, {
-        jobId, status: "cloning",
+        jobId,
+        status: "cloning",
       });
 
       // Get repo tree
       const tree = await ctx.runAction(internal.github.getRepoContent, {
-        installationId, owner: repo.owner, repo: repo.name, branch,
+        installationId,
+        owner: repo.owner,
+        repo: repo.name,
+        branch,
       });
 
-      // Filter to supported files
-      const files = tree.tree.filter((item: { path: string; type: string }) =>
-        item.type === "blob" &&
-        !shouldSkip(item.path) &&
-        getLanguagePackage(item.path) !== null
+      const githubFiles: GitHubTreeItem[] = tree.tree.filter(
+        (item: GitHubTreeItem) =>
+          item.type === "blob" &&
+          !shouldSkipPath(item.path) &&
+          getLanguageInfo(item.path) !== null,
       );
 
+      const existingFileShas: { filePath: string; fileSha: string | undefined }[] =
+        await ctx.runQuery(internal.indexingMutations.getBranchFileShas, {
+          repoId,
+          branch,
+        });
+
+      const { toFetch, toDelete, skippedCount } = computeFileDiff(
+        githubFiles,
+        existingFileShas,
+        (item) => item.filePath,
+        (item) => item.fileSha,
+      );
+
+      const totalWork = toFetch.length + toDelete.length;
+
       await ctx.runMutation(internal.indexingMutations.updateIndexingJob, {
-        jobId, status: "parsing", totalFiles: files.length, processedFiles: 0,
+        jobId,
+        status: "parsing",
+        totalFiles: totalWork,
+        processedFiles: 0,
       });
 
-      await ctx.runMutation(internal.indexingMutations.clearBranchChunks, { repoId, branch });
+      console.log(
+        `Incremental index: ${toFetch.length} changed, ${toDelete.length} removed, ${skippedCount} unchanged`,
+      );
+
+      for (const deleted of toDelete) {
+        await ctx.runMutation(internal.indexingMutations.deleteFileChunks, {
+          repoId,
+          branch,
+          filePath: deleted.filePath,
+        });
+      }
 
       let totalChunks = 0;
       let processedFiles = 0;
 
-      for (const file of files) {
+      for (const file of toFetch) {
         try {
-          const { content } = await ctx.runAction(internal.github.getFileContent, {
-            installationId, owner: repo.owner, repo: repo.name, path: file.path, ref: branch,
+          await ctx.runMutation(internal.indexingMutations.deleteFileChunks, {
+            repoId,
+            branch,
+            filePath: file.path,
           });
+
+          const { content } = await ctx.runAction(
+            internal.github.getFileContent,
+            {
+              installationId,
+              owner: repo.owner,
+              repo: repo.name,
+              path: file.path,
+              ref: branch,
+            },
+          );
 
           const chunks = await extractChunks(content, file.path);
           const lang = path.extname(file.path).slice(1) || "code";
 
           if (chunks.length > 0) {
-            await ctx.runMutation(internal.indexingMutations.updateIndexingJob, {
-              jobId, status: "embedding",
-            });
+            await ctx.runMutation(
+              internal.indexingMutations.updateIndexingJob,
+              {
+                jobId,
+                status: "embedding",
+              },
+            );
           }
 
           for (const chunk of chunks) {
-            const docstring = chunk.docs || await generateDocstring(chunk.code, lang);
+            const docstring =
+              chunk.docs || (await generateDocstring(chunk.code, lang));
             const embedding = await generateEmbedding(
-              `${chunk.name}: ${docstring}\n\n${chunk.code.slice(0, 1000)}`
+              `${chunk.name}: ${docstring}\n\n${chunk.code.slice(0, 1000)}`,
             );
 
             await ctx.runMutation(internal.indexingMutations.storeCodeChunk, {
-              repoId, branch, filePath: file.path,
-              chunkType: chunk.chunkType, name: chunk.name,
-              code: chunk.code, docstring,
-              startLine: chunk.startLine, endLine: chunk.endLine,
-              embedding, language: lang,
+              repoId,
+              branch,
+              filePath: file.path,
+              chunkType: chunk.chunkType,
+              name: chunk.name,
+              code: chunk.code,
+              docstring,
+              startLine: chunk.startLine,
+              endLine: chunk.endLine,
+              embedding,
+              language: lang,
+              fileSha: file.sha,
             });
 
             totalChunks++;
@@ -428,20 +523,29 @@ export const startIndexing = internalAction({
 
           processedFiles++;
           await ctx.runMutation(internal.indexingMutations.updateIndexingJob, {
-            jobId, processedFiles, totalChunks, storedChunks: totalChunks,
+            jobId,
+            processedFiles,
+            totalChunks,
+            storedChunks: totalChunks,
           });
         } catch (fileErr) {
           console.error(`Error processing ${file.path}:`, fileErr);
         }
       }
 
-      await ctx.runMutation(internal.repos.markBranchIndexed, { repoId, branch });
+      await ctx.runMutation(internal.repos.markBranchIndexed, {
+        repoId,
+        branch,
+      });
       await ctx.runMutation(internal.indexingMutations.updateIndexingJob, {
-        jobId, status: "completed", completedAt: Date.now(),
+        jobId,
+        status: "completed",
+        completedAt: Date.now(),
       });
     } catch (err) {
       await ctx.runMutation(internal.indexingMutations.updateIndexingJob, {
-        jobId, status: "failed",
+        jobId,
+        status: "failed",
         error: err instanceof Error ? err.message : "Unknown error",
         completedAt: Date.now(),
       });
@@ -458,7 +562,15 @@ type CodeChunkWithScore = {
   branch: string;
   repoBranchKey: string;
   filePath: string;
-  chunkType: "function" | "class" | "method" | "interface" | "type" | "variable" | "import" | "file_summary";
+  chunkType:
+    | "function"
+    | "class"
+    | "method"
+    | "interface"
+    | "type"
+    | "variable"
+    | "import"
+    | "file_summary";
   name: string;
   code: string;
   docstring: string;
@@ -477,7 +589,10 @@ export const searchCodeChunks = internalAction({
     query: v.string(),
     limit: v.optional(v.number()),
   },
-  handler: async (ctx, { repoId, branch, query, limit = 10 }): Promise<CodeChunkWithScore[]> => {
+  handler: async (
+    ctx,
+    { repoId, branch, query, limit = 10 },
+  ): Promise<CodeChunkWithScore[]> => {
     const queryEmbedding = await generateEmbedding(query);
     const repoBranchKey = `${repoId}:${branch}`;
 
@@ -489,9 +604,12 @@ export const searchCodeChunks = internalAction({
 
     const chunks: CodeChunkWithScore[] = [];
     for (const result of results) {
-      const chunk = await ctx.runQuery(internal.indexingMutations.getChunkById, {
-        chunkId: result._id as Id<"codeChunks">,
-      });
+      const chunk = await ctx.runQuery(
+        internal.indexingMutations.getChunkById,
+        {
+          chunkId: result._id as Id<"codeChunks">,
+        },
+      );
       if (chunk) {
         chunks.push({ ...chunk, score: result._score });
       }

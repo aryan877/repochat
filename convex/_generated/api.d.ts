@@ -19,6 +19,7 @@ import type * as mcpServers from "../mcpServers.js";
 import type * as repos from "../repos.js";
 import type * as reviews from "../reviews.js";
 import type * as reviewsMutations from "../reviewsMutations.js";
+import type * as shared from "../shared.js";
 import type * as users from "../users.js";
 import type * as webhooks from "../webhooks.js";
 import type * as webhooksMutations from "../webhooksMutations.js";
@@ -42,6 +43,7 @@ declare const fullApi: ApiFromModules<{
   repos: typeof repos;
   reviews: typeof reviews;
   reviewsMutations: typeof reviewsMutations;
+  shared: typeof shared;
   users: typeof users;
   webhooks: typeof webhooks;
   webhooksMutations: typeof webhooksMutations;

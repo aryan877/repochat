@@ -63,7 +63,7 @@ export default defineSchema({
   codeChunks: defineTable({
     repoId: v.id("repos"),
     branch: v.string(),
-    // Composite key for efficient vector search filtering (industry standard pattern)
+    // Composite key for efficient vector search filtering
     // Format: "{repoId}:{branch}" - allows single-field AND filtering in vector search
     repoBranchKey: v.string(),
     filePath: v.string(),
@@ -75,7 +75,7 @@ export default defineSchema({
       v.literal("type"),
       v.literal("variable"),
       v.literal("import"),
-      v.literal("file_summary")
+      v.literal("file_summary"),
     ),
     name: v.string(),
     code: v.string(),
@@ -84,11 +84,13 @@ export default defineSchema({
     endLine: v.number(),
     embedding: v.array(v.float64()),
     language: v.string(),
+    fileSha: v.optional(v.string()),
     indexedAt: v.number(),
   })
     .index("by_repo", ["repoId"])
     .index("by_repo_branch", ["repoId", "branch"])
     .index("by_repo_file", ["repoId", "filePath"])
+    .index("by_repo_branch_file", ["repoId", "branch", "filePath"])
     .vectorIndex("by_embedding", {
       vectorField: "embedding",
       dimensions: 1536,
@@ -107,7 +109,7 @@ export default defineSchema({
       v.literal("pending"),
       v.literal("processing"),
       v.literal("completed"),
-      v.literal("failed")
+      v.literal("failed"),
     ),
     error: v.optional(v.string()),
     receivedAt: v.number(),
@@ -131,7 +133,7 @@ export default defineSchema({
       v.literal("reviewing"),
       v.literal("posting"),
       v.literal("completed"),
-      v.literal("failed")
+      v.literal("failed"),
     ),
     summary: v.optional(v.string()),
     findings: v.optional(
@@ -144,11 +146,12 @@ export default defineSchema({
           filePath: v.string(),
           line: v.optional(v.number()),
           suggestion: v.optional(v.string()),
-        })
-      )
+        }),
+      ),
     ),
     summaryCommentId: v.optional(v.number()),
     reviewId: v.optional(v.number()),
+    githubReviewId: v.optional(v.number()),
     feedbackScore: v.optional(v.number()),
     triggeredAt: v.number(),
     completedAt: v.optional(v.number()),
@@ -170,7 +173,7 @@ export default defineSchema({
       v.literal("embedding"),
       v.literal("storing"),
       v.literal("completed"),
-      v.literal("failed")
+      v.literal("failed"),
     ),
     totalFiles: v.optional(v.number()),
     processedFiles: v.optional(v.number()),
@@ -179,7 +182,7 @@ export default defineSchema({
     triggerType: v.union(
       v.literal("manual"),
       v.literal("push"),
-      v.literal("initial")
+      v.literal("initial"),
     ),
     commitSha: v.optional(v.string()),
     error: v.optional(v.string()),
@@ -217,8 +220,7 @@ export default defineSchema({
       Authorization: v.optional(v.string()),
     }),
     createdAt: v.number(),
-  })
-    .index("by_clerk_id", ["clerkId"]),
+  }).index("by_clerk_id", ["clerkId"]),
 
   // Import status for tracking repository file imports
   importStatus: defineTable({
@@ -227,7 +229,7 @@ export default defineSchema({
       v.literal("pending"),
       v.literal("importing"),
       v.literal("completed"),
-      v.literal("failed")
+      v.literal("failed"),
     ),
     progress: v.optional(v.number()),
     totalFiles: v.optional(v.number()),
@@ -235,6 +237,5 @@ export default defineSchema({
     error: v.optional(v.string()),
     startedAt: v.number(),
     completedAt: v.optional(v.number()),
-  })
-    .index("by_repo", ["repoId"]),
+  }).index("by_repo", ["repoId"]),
 });

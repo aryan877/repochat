@@ -3,34 +3,18 @@
 import { v } from "convex/values";
 import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { shouldSkipPath, computeFileDiff, type GitHubTreeItem } from "./shared";
 
-// Extensions to include when importing
 const INCLUDE_EXTENSIONS = [
   ".ts", ".tsx", ".js", ".jsx", ".mjs", ".json", ".css", ".scss",
   ".html", ".md", ".mdx", ".py", ".go", ".rs", ".java", ".yml",
   ".yaml", ".toml", ".env.example", ".gitignore",
 ];
 
-// Paths to skip
-const SKIP_PATHS = [
-  "node_modules", ".git", ".next", "dist", "build", "__pycache__",
-  ".venv", "venv", ".cache", "coverage", ".DS_Store",
-  "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
-];
-
-function shouldIncludeFile(path: string): boolean {
-  if (SKIP_PATHS.some((skip) => path.includes(skip))) {
-    return false;
-  }
-  const ext = path.substring(path.lastIndexOf("."));
-  return INCLUDE_EXTENSIONS.includes(ext) || path.endsWith(".example");
-}
-
-interface GitHubTreeItem {
-  path: string;
-  type: string;
-  sha: string;
-  size?: number;
+function shouldIncludeFile(filePath: string): boolean {
+  if (shouldSkipPath(filePath)) return false;
+  const ext = filePath.substring(filePath.lastIndexOf("."));
+  return INCLUDE_EXTENSIONS.includes(ext) || filePath.endsWith(".example");
 }
 
 interface ExistingFile {
@@ -73,16 +57,11 @@ export const importRepository = action({
     });
 
     try {
-      // Get existing files from our DB (with their SHAs)
       const existingFiles: ExistingFile[] = await ctx.runQuery(
         internal.files.getRepoFilesInternal,
         { repoId }
       );
-      const existingByPath = new Map(
-        existingFiles.map((f) => [f.path, { sha: f.sha, id: f._id }])
-      );
 
-      // Get repo tree from GitHub (includes SHA for each file)
       const tree: { tree: GitHubTreeItem[]; truncated: boolean } = await ctx.runAction(
         internal.github.getRepoContent,
         {
@@ -93,27 +72,21 @@ export const importRepository = action({
         }
       );
 
-      // Filter to files we care about
       const githubFiles = tree.tree.filter(
-        (item) =>
+        (item: GitHubTreeItem) =>
           item.type === "blob" &&
           shouldIncludeFile(item.path) &&
           (item.size === undefined || item.size < 500000)
       );
 
-      const githubPaths = new Set(githubFiles.map((f) => f.path));
-
-      // Find files to add/update (SHA differs or doesn't exist)
-      const filesToFetch = githubFiles.filter((file) => {
-        const existing = existingByPath.get(file.path);
-        return !existing || existing.sha !== file.sha;
-      });
-
-      // Find files to delete (exist in DB but not in GitHub anymore)
-      const filesToDelete = existingFiles.filter((f) => !githubPaths.has(f.path));
+      const { toFetch: filesToFetch, toDelete: filesToDelete, skippedCount } = computeFileDiff(
+        githubFiles,
+        existingFiles,
+        (f) => f.path,
+        (f) => f.sha,
+      );
 
       const totalOperations = filesToFetch.length + filesToDelete.length;
-      const skippedCount = githubFiles.length - filesToFetch.length;
 
       // If nothing to do, mark as completed immediately
       if (totalOperations === 0) {

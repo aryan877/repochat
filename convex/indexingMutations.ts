@@ -73,10 +73,9 @@ export const storeCodeChunk = internalMutation({
     endLine: v.number(),
     embedding: v.array(v.float64()),
     language: v.string(),
+    fileSha: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Create composite key for efficient vector search filtering
-    // This is the industry-standard pattern for multi-field filtering in vector DBs
     const repoBranchKey = `${args.repoId}:${args.branch}`;
 
     return await ctx.db.insert("codeChunks", {
@@ -102,6 +101,50 @@ export const clearBranchChunks = internalMutation({
     for (const chunk of chunks) {
       await ctx.db.delete(chunk._id);
     }
+  },
+});
+
+// Get unique file SHAs for a branch (for incremental indexing)
+export const getBranchFileShas = internalQuery({
+  args: {
+    repoId: v.id("repos"),
+    branch: v.string(),
+  },
+  handler: async (ctx, { repoId, branch }) => {
+    const chunks = await ctx.db
+      .query("codeChunks")
+      .withIndex("by_repo_branch", (q) => q.eq("repoId", repoId).eq("branch", branch))
+      .collect();
+
+    const fileMap = new Map<string, string | undefined>();
+    for (const chunk of chunks) {
+      if (!fileMap.has(chunk.filePath)) {
+        fileMap.set(chunk.filePath, chunk.fileSha);
+      }
+    }
+    return Array.from(fileMap.entries()).map(([filePath, fileSha]) => ({ filePath, fileSha }));
+  },
+});
+
+// Delete chunks for a specific file
+export const deleteFileChunks = internalMutation({
+  args: {
+    repoId: v.id("repos"),
+    branch: v.string(),
+    filePath: v.string(),
+  },
+  handler: async (ctx, { repoId, branch, filePath }) => {
+    const chunks = await ctx.db
+      .query("codeChunks")
+      .withIndex("by_repo_branch_file", (q) =>
+        q.eq("repoId", repoId).eq("branch", branch).eq("filePath", filePath),
+      )
+      .collect();
+
+    for (const chunk of chunks) {
+      await ctx.db.delete(chunk._id);
+    }
+    return chunks.length;
   },
 });
 

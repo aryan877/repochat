@@ -1,15 +1,20 @@
 "use node";
 
 import { v } from "convex/values";
-import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { internalAction } from "./_generated/server";
 
 // Generate PR review using LLM
 async function generateReview(
   prTitle: string,
   prDescription: string | null,
   files: Array<{ filename: string; patch?: string; status: string }>,
-  codebaseContext: Array<{ name: string; docstring: string; code: string; filePath: string }>
+  codebaseContext: Array<{
+    name: string;
+    docstring: string;
+    code: string;
+    filePath: string;
+  }>,
 ): Promise<{
   summary: string;
   findings: Array<{
@@ -30,13 +35,19 @@ async function generateReview(
   // Build context from codebase
   const contextStr = codebaseContext
     .slice(0, 10)
-    .map((c) => `### ${c.filePath} - ${c.name}\n${c.docstring}\n\`\`\`\n${c.code.slice(0, 500)}\n\`\`\``)
+    .map(
+      (c) =>
+        `### ${c.filePath} - ${c.name}\n${c.docstring}\n\`\`\`\n${c.code.slice(0, 500)}\n\`\`\``,
+    )
     .join("\n\n");
 
   // Build diff context
   const diffStr = files
     .slice(0, 20)
-    .map((f) => `### ${f.filename} (${f.status})\n\`\`\`diff\n${f.patch?.slice(0, 1000) || "No diff available"}\n\`\`\``)
+    .map(
+      (f) =>
+        `### ${f.filename} (${f.status})\n\`\`\`diff\n${f.patch?.slice(0, 1000) || "No diff available"}\n\`\`\``,
+    )
     .join("\n\n");
 
   const prompt = `You are an expert code reviewer. Review this pull request with full codebase context.
@@ -78,20 +89,23 @@ Respond in this exact JSON format:
 If the PR looks good with no issues, return an empty findings array.
 Only respond with valid JSON, no markdown or explanation.`;
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${openrouterKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://repochat.dev",
+  const response = await fetch(
+    "https://openrouter.ai/api/v1/chat/completions",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openrouterKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://repochat.dev",
+      },
+      body: JSON.stringify({
+        model: "deepseek/deepseek-v3.2", // Latest DeepSeek V3.2
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 2000,
+        response_format: { type: "json_object" },
+      }),
     },
-    body: JSON.stringify({
-      model: "deepseek/deepseek-v3.2", // Latest DeepSeek V3.2 - top tier for code review
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 2000,
-      response_format: { type: "json_object" },
-    }),
-  });
+  );
 
   if (!response.ok) {
     const error = await response.text();
@@ -128,7 +142,7 @@ function formatReviewComment(
     filePath: string;
     line?: number;
     suggestion?: string;
-  }>
+  }>,
 ): string {
   let comment = `## 🤖 RepoChat AI Review\n\n${summary}\n\n`;
 
@@ -166,7 +180,8 @@ function formatReviewComment(
     }
   }
 
-  comment += "\n---\n*Reviewed by [RepoChat](https://repochat.dev) - AI Code Review with full codebase context*";
+  comment +=
+    "\n---\n*Reviewed by [RepoChat](https://repochat.dev) - AI Code Review with full codebase context*";
 
   return comment;
 }
@@ -185,22 +200,35 @@ export const startReview = internalAction({
     headSha: v.string(),
   },
   handler: async (ctx, args) => {
-    const { repoId, installationId, prNumber, prTitle, prUrl, baseBranch, headBranch } = args;
-
-    // Create review record
-    const reviewId = await ctx.runMutation(internal.reviewsMutations.createReview, {
+    const {
       repoId,
+      installationId,
       prNumber,
       prTitle,
-      prAuthor: args.prAuthor,
       prUrl,
       baseBranch,
       headBranch,
-    });
+    } = args;
+
+    // Create review record
+    const reviewId = await ctx.runMutation(
+      internal.reviewsMutations.createReview,
+      {
+        repoId,
+        prNumber,
+        prTitle,
+        prAuthor: args.prAuthor,
+        prUrl,
+        baseBranch,
+        headBranch,
+      },
+    );
 
     try {
       // Get repo details
-      const repo = await ctx.runQuery(internal.repos.getRepoInternal, { repoId });
+      const repo = await ctx.runQuery(internal.repos.getRepoInternal, {
+        repoId,
+      });
       if (!repo) throw new Error("Repo not found");
 
       // Update status to analyzing
@@ -219,8 +247,15 @@ export const startReview = internalAction({
 
       // Get codebase context via vector search
       // Search for context related to the changed files
-      const changedPaths = files.map((f: { filename: string }) => f.filename).join(" ");
-      let codebaseContext: Array<{ name: string; docstring: string; code: string; filePath: string }> = [];
+      const changedPaths = files
+        .map((f: { filename: string }) => f.filename)
+        .join(" ");
+      let codebaseContext: Array<{
+        name: string;
+        docstring: string;
+        code: string;
+        filePath: string;
+      }> = [];
 
       try {
         const chunks = await ctx.runAction(internal.indexing.searchCodeChunks, {
@@ -254,7 +289,12 @@ export const startReview = internalAction({
       });
 
       // Generate review
-      const review = await generateReview(prTitle, pr.body, files, codebaseContext);
+      const review = await generateReview(
+        prTitle,
+        pr.body,
+        files,
+        codebaseContext,
+      );
 
       // Store findings
       await ctx.runMutation(internal.reviewsMutations.updateReview, {
@@ -265,21 +305,29 @@ export const startReview = internalAction({
       });
 
       // Post review to GitHub
-      const reviewComment = formatReviewComment(review.summary, review.findings);
-      const event = review.findings.some((f) => f.severity === "critical" || f.severity === "high")
+      const reviewComment = formatReviewComment(
+        review.summary,
+        review.findings,
+      );
+      const event = review.findings.some(
+        (f) => f.severity === "critical" || f.severity === "high",
+      )
         ? "REQUEST_CHANGES"
         : review.findings.length > 0
-        ? "COMMENT"
-        : "APPROVE";
+          ? "COMMENT"
+          : "APPROVE";
 
-      const postedReview = await ctx.runAction(internal.github.postReviewComment, {
-        installationId,
-        owner: repo.owner,
-        repo: repo.name,
-        prNumber,
-        body: reviewComment,
-        event: event as "APPROVE" | "REQUEST_CHANGES" | "COMMENT",
-      });
+      const postedReview = await ctx.runAction(
+        internal.github.postReviewComment,
+        {
+          installationId,
+          owner: repo.owner,
+          repo: repo.name,
+          prNumber,
+          body: reviewComment,
+          event: event as "APPROVE" | "REQUEST_CHANGES" | "COMMENT",
+        },
+      );
 
       // Complete
       await ctx.runMutation(internal.reviewsMutations.updateReview, {

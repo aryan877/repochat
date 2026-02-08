@@ -369,16 +369,50 @@ Then paste the system prompt from [`src/lib/constants.ts`](src/lib/constants.ts)
 <summary><b>How the Indexing Pipeline Works</b></summary>
 
 ```
-Push event (GitHub webhook)
+Push to indexed branch (GitHub webhook)
   → Fetch full repo tree via Octokit
-  → Download file contents (filtered by language)
-  → Parse each file with Tree-sitter WASM grammar
-  → Extract: functions, classes, methods, interfaces, types, imports
-  → Generate 1536-dim embeddings via text-embedding-3-small
-  → Store in Convex with vector index (filtered by repo+branch composite key)
+  → Filter: skip node_modules, .git, dist, build, lock files, minified JS
+  → Keep only supported languages (JS/TS/Python/Go/Rust/Java/C/C++/C#/Ruby/Kotlin/Bash)
+  → Delete all existing chunks for that branch (full re-index, not incremental)
+  → For each file:
+      → Fetch content from GitHub API
+      → Parse with Tree-sitter WASM grammar
+      → Extract definitions using tags.scm queries (functions, classes, methods, interfaces, types)
+      → Fall back to AST traversal if no query file exists for the language
+      → Generate 1536-dim embedding per chunk via OpenAI text-embedding-3-small
+      → Store chunk + embedding in Convex vector index
+  → Mark branch as indexed
 ```
 
+**Indexing triggers:** push events to already-indexed branches, or manual trigger. Each run is a **full re-index** — old chunks are deleted before new ones are stored. This ensures no stale code lingers after refactors or file deletions.
+
 The composite key pattern (`{repoId}:{branch}`) enables efficient single-field filtering during vector search — an industry standard for multi-tenant vector databases.
+
+</details>
+
+<details>
+<summary><b>Solving Tree-sitter on Convex: The WASM Bundling Problem</b></summary>
+
+Running Tree-sitter in a serverless environment (Convex) required solving a non-trivial packaging problem. Here's the short version:
+
+**The challenge:** Tree-sitter has two parts that need to work together on the server:
+
+| Package | What it does |
+|---|---|
+| `web-tree-sitter` | The runtime engine — loads WASM grammars, parses code, runs queries |
+| `tree-sitter-wasms` | Pre-compiled WASM binaries for 30+ languages (JS, Python, Go, etc.) |
+
+Convex uses **esbuild** to bundle your backend code. Packages listed in `externalPackages` get installed on the server via `npm install` instead of being inlined. But esbuild can only detect packages from **static** `require()` calls with string literals — dynamic `require(variable)` is invisible to the bundler.
+
+**What we did:**
+
+1. **Static require for detection:** Added `require("tree-sitter-wasms/package.json")` at the top of `indexing.ts`. This is never used for its return value — it just tells esbuild "this package exists, mark it external." We use `/package.json` specifically because the main entry (`bindings/node`) is a native addon that crashes in Convex's runtime.
+
+2. **Version matching:** `tree-sitter-wasms@0.1.13` compiles its WASMs with `tree-sitter-cli@0.20.x`. The WASM binary format changed in 0.22+, so `web-tree-sitter@0.26.x` can't load them (fails at `getDylinkMetadata`). Pinned to `web-tree-sitter@0.22.6` which is the newest version compatible with the 0.20.x WASM format.
+
+3. **Local query files:** Tree-sitter's `tags.scm` query files enable smart extraction (find all function/class/method definitions). These ship inside individual language packages (`tree-sitter-javascript`, etc.), but those packages have conflicting peer dependencies that break `npm install` on Convex's server. Solution: copied the 10 query files into `convex/queries/` and load them with `fs.readFileSync` at runtime.
+
+**Result:** Full AST-based code intelligence across 11 languages running on Convex's serverless runtime, with query-based definition extraction instead of naive regex or line-based chunking.
 
 </details>
 
@@ -432,7 +466,11 @@ repochat/
 │   ├── reviews.ts           # DeepSeek review engine
 │   ├── webhooks.ts          # GitHub webhook handlers
 │   ├── mcpServers.ts        # Per-user MCP CRUD
-│   └── workflowManager.ts   # Async workflow orchestration
+│   ├── workflowManager.ts   # Async workflow orchestration
+│   └── queries/             # Tree-sitter tags.scm files (10 languages)
+│       ├── javascript.scm   #   Bundled locally to avoid peer dep conflicts
+│       ├── typescript.scm   #   with individual tree-sitter-* packages
+│       └── ...
 ├── src/
 │   ├── app/
 │   │   ├── providers.tsx    # Tambo + MCP + Clerk + Convex

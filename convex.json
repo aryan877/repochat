@@ -1,5 +1,11 @@
 {
   "node": {
-    "externalPackages": ["jszip", "svix", "web-tree-sitter", "tree-sitter-wasms", "jsonwebtoken"]
+    "externalPackages": [
+      "jszip",
+      "svix",
+      "jsonwebtoken",
+      "web-tree-sitter",
+      "tree-sitter-wasms"
+    ]
   }
 }

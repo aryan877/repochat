@@ -5,7 +5,8 @@ import { useLottie } from "lottie-react";
 
 // Import the animation data
 import arrowAnimation from "@/arrow-animation.json";
-import { useRouter, useParams, useSearchParams } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
+import { useSelectedRepo } from "@/app/providers";
 import { SignedIn, UserButton, useUser } from "@clerk/nextjs";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
@@ -271,12 +272,11 @@ export default function ChatPage() {
   const params = useParams<{ threadId?: string[] }>();
   const urlThreadId = params.threadId?.[0];
 
-  const searchParams = useSearchParams();
   const { user, isLoaded } = useUser();
+  const { selectedRepoName: selectedRepo, setSelectedRepoName } = useSelectedRepo();
   const [mounted, setMounted] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mode, setMode] = useState<ViewMode>("chat");
-  const selectedRepo = searchParams.get("repo");
   const [repoDropdownOpen, setRepoDropdownOpen] = useState(false);
   const [threadSearch, setThreadSearch] = useState("");
   const [deletedThreadIds, setDeletedThreadIds] = useState<Set<string>>(
@@ -327,14 +327,10 @@ export default function ChatPage() {
   // Track whether we initiated the navigation (to avoid loops)
   const navigatingRef = useRef(false);
 
-  // Helper to build paths preserving the ?repo= search param
+  // Helper to build navigation paths
   const buildPath = useCallback(
-    (base: string) => {
-      return selectedRepo
-        ? `${base}?repo=${encodeURIComponent(selectedRepo)}`
-        : base;
-    },
-    [selectedRepo],
+    (base: string) => base,
+    [],
   );
 
   // Sync URL → Tambo: if URL has a threadId, switch to it
@@ -502,14 +498,7 @@ export default function ChatPage() {
   const handleRepoSelect = (
     repo: { _id: Id<"repos">; name: string } | null,
   ) => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (repo) {
-      params.set("repo", repo.name);
-    } else {
-      params.delete("repo");
-    }
-    const threadPath = urlThreadId ? `/chat/${urlThreadId}` : "/chat";
-    router.replace(`${threadPath}?${params.toString()}`);
+    setSelectedRepoName(repo?.name ?? null);
     setRepoDropdownOpen(false);
   };
 

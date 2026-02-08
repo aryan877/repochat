@@ -7,8 +7,46 @@ import { TamboProvider, currentTimeContextHelper } from "@tambo-ai/react";
 import { TamboMcpProvider, MCPTransport } from "@tambo-ai/react/mcp";
 import { ConvexReactClient, useAction, useQuery } from "convex/react";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
-import { ReactNode, useEffect, useMemo, useState } from "react";
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { api } from "../../convex/_generated/api";
+
+// ── Selected Repo Context (persists across page navigation) ──
+
+interface SelectedRepoCtx {
+  selectedRepoName: string | null;
+  setSelectedRepoName: (name: string | null) => void;
+}
+
+const SelectedRepoContext = createContext<SelectedRepoCtx>({
+  selectedRepoName: null,
+  setSelectedRepoName: () => {},
+});
+
+export function useSelectedRepo() {
+  return useContext(SelectedRepoContext);
+}
+
+function SelectedRepoProvider({ children }: { children: ReactNode }) {
+  const [selectedRepoName, setSelectedRepoNameRaw] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("repochat:selectedRepo") || null;
+  });
+
+  const setSelectedRepoName = useCallback((name: string | null) => {
+    setSelectedRepoNameRaw(name);
+    if (name) {
+      localStorage.setItem("repochat:selectedRepo", name);
+    } else {
+      localStorage.removeItem("repochat:selectedRepo");
+    }
+  }, []);
+
+  return (
+    <SelectedRepoContext.Provider value={{ selectedRepoName, setSelectedRepoName }}>
+      {children}
+    </SelectedRepoContext.Provider>
+  );
+}
 
 const convex = new ConvexReactClient(
   process.env.NEXT_PUBLIC_CONVEX_URL as string,
@@ -168,7 +206,9 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <ClerkProvider>
       <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
-        <TamboProviderWithAuth>{children}</TamboProviderWithAuth>
+        <SelectedRepoProvider>
+          <TamboProviderWithAuth>{children}</TamboProviderWithAuth>
+        </SelectedRepoProvider>
       </ConvexProviderWithClerk>
     </ClerkProvider>
   );

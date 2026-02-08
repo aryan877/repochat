@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://tambo.co"><img src="public/Tambo-Lockup.svg" height="24" alt="Tambo" /></a>
+  <a href="https://tambo.co"><img src="public/Tambo-Lockup.svg" height="24" alt="Built with Tambo" /></a>
   &nbsp;
   <a href="https://nextjs.org"><img src="https://img.shields.io/badge/Next.js-15-black?logo=next.js&logoColor=white" alt="Next.js 15" /></a>
   <a href="https://react.dev"><img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" alt="React 19" /></a>
@@ -30,7 +30,7 @@
 | **Convex** | Managed | Real-time DB + workflow engine |
 | **Clerk** | Managed | OAuth + GitHub App auth |
 
-I [forked Tambo's open-source backend](https://github.com/aryan877/tambo) and self-host it because the hosted tier hits OpenAI's strict schema limits when you throw this many components and tools at it. So I disabled `strictJsonSchema` and deployed my own instance with Docker Compose + Caddy.
+I [forked Tambo's open-source backend](https://github.com/aryan877/tambo) and self-host it because the hosted tier hits OpenAI's strict schema limits when you throw 12 components and 11 tools at it. Disabled `strictJsonSchema` and deployed my own instance with Docker Compose + Caddy.
 
 ---
 
@@ -38,11 +38,11 @@ I [forked Tambo's open-source backend](https://github.com/aryan877/tambo) and se
 
 Code reviews on GitHub are blind. Reviewers see a diff but have zero context about the rest of the codebase — how functions are called elsewhere, what patterns exist, whether a change breaks a convention. They review in isolation.
 
-## The Solution
+## What RepoChat Does
 
-RepoChat indexes your entire codebase with Tree-sitter AST parsing and vector embeddings. When you ask it to review a PR, it pulls semantically similar code from across the repo, understands the patterns, and renders interactive UI components showing exactly what matters: security alerts, dependency graphs, severity heatmaps. Not just a wall of text.
+RepoChat indexes your entire codebase with Tree-sitter AST parsing and vector embeddings. When you review a PR — whether through chat or automated webhooks — it pulls semantically similar code from across the repo and understands the patterns. The AI renders interactive UI components showing exactly what matters: security alerts, dependency graphs, severity heatmaps. Not a wall of text.
 
-You can also plug in your own services (Supabase, any MCP server) and query databases, manage schemas, run SQL, all from the same chat.
+You can also plug in your own services (Supabase, any MCP server) and query databases, manage schemas, run SQL — all from the same chat.
 
 ---
 
@@ -52,7 +52,7 @@ You can also plug in your own services (Supabase, any MCP server) and query data
 "Review PR #42 on my-org/api"
 ```
 
-The AI fetches the diff, searches the codebase for related code via vector embeddings, analyzes it with DeepSeek V3.2, then renders:
+The AI fetches the diff, searches the indexed codebase for related code via vector embeddings, analyzes it with DeepSeek V3.2, then renders:
 
 - A `PRSummary` card with metadata
 - `SecurityAlert` components for vulnerabilities (with CWE IDs)
@@ -78,15 +78,16 @@ All posted back to GitHub as a proper PR review with inline comments.
  │  Tree-sitter WASM → AST Chunks       │
  │  OpenAI Embeddings → 1536-dim Vec    │
  │  DeepSeek V3.2 → AI Code Reviews     │
- │  Workflow Engine → Index + Review     │
+ │  Durable Workflows → Index + Review  │
+ │  Vector Search → Semantic Code Search │
  └──────────────────┬──────────────────┘
                     │ real-time sync
  ┌──────────────────▼──────────────────┐
  │          Next.js Frontend             │
  │                                      │
- │  Generative UI Components             │
- │  GitHub Tools · Per-user MCP          │
- │  Monaco · XTerm · XYFlow · Recharts   │
+ │  Tambo Generative UI (12 components) │
+ │  11 GitHub Tools · Per-user MCP      │
+ │  Monaco · XTerm · XYFlow · Recharts  │
  └──────────┬───────────────┬──────────┘
             │               │
             ▼               ▼
@@ -101,21 +102,153 @@ All posted back to GitHub as a proper PR review with inline comments.
 
 ---
 
+## How I Use Tambo
+
+This is the core of the project. Tambo isn't a bolt-on — it's the entire AI orchestration layer.
+
+### The AI picks the UI, not me
+
+I register React components with Zod schemas and a description of when to use them. The AI sees all of it and picks the right component itself, streaming props in real-time.
+
+```tsx
+// src/lib/tambo.ts
+{
+  name: "SecurityAlert",
+  description: `Render when finding a security vulnerability...
+    TRIGGER: SQL injection, XSS, auth issues, OWASP top 10`,
+  component: SecurityAlert,
+  propsSchema: securityAlertSchema, // Zod schema — AI sees the shape
+}
+```
+
+No routing logic. No switch statement. 12 components, and the AI figures out which one to render.
+
+### Context helpers: the AI already knows what you're looking at
+
+Context helpers get silently injected into every message. The AI always has ambient awareness:
+
+```tsx
+// src/app/providers.tsx
+contextHelpers={{
+  currentTime: currentTimeContextHelper,
+  githubStatus: () => ({
+    connected: true,
+    username: "aryan877",
+  }),
+  mcpIntegrations: () => ({
+    count: 1,
+    servers: ["Supabase Production"],
+  }),
+}}
+```
+
+On the chat page, the selected repo is registered dynamically:
+
+```tsx
+addContextHelper("selectedRepo", () => ({
+  owner: "vercel",
+  name: "next.js",
+  defaultBranch: "canary",
+}));
+```
+
+When someone types "list open PRs", the AI doesn't ask "which repo?" — it already knows. Switch repos from the dropdown, next message uses the new context. Zero friction.
+
+There's also `useTamboContextAttachment` for one-shot context: paste a stack trace and it goes with just that one message. Helpers are always-on; attachments are fire-once.
+
+### Interactable components: AI and user share state
+
+Most components are read-only. But `ReviewChecklist` is different — it's wrapped with `withInteractable`, which gives it two-way state sync:
+
+```tsx
+const [findings, setFindings] = useTamboComponentState<Finding[]>(
+  "findings", propFindings, propFindings
+);
+
+const toggleResolved = (id: string) => {
+  setFindings(findings.map(f =>
+    f.id === id ? { ...f, resolved: !f.resolved } : f
+  ));
+};
+
+export const ReviewChecklist = withInteractable(ReviewChecklistBase, {
+  componentName: "ReviewChecklist",
+  stateSchema: ReviewChecklistStateSchema,
+});
+```
+
+The AI adds findings during a review. You check them off as you fix things. Later, the AI reads the state back and says "you've resolved 3 of 7 findings, want me to look at the remaining ones?" That's shared state between a human and a model.
+
+### Streaming-safe by design
+
+Tambo streams props incrementally, so components get called with partial data:
+
+```
+Render 1: { title: undefined, steps: undefined }   ← steps.map() would crash
+Render 2: { title: "Plan", steps: undefined }
+Render 3: { title: "Plan", steps: [{ ... }] }
+```
+
+Every component uses safe defaults (`steps = []`, `content = ""`) so nothing breaks mid-stream. Charts and dependency graphs wait for `useTamboStreamStatus` to report completion before mounting.
+
+### Per-user MCP: each user brings their own tools
+
+Users connect MCP servers from Settings. The config is stored in Convex and loaded reactively:
+
+```tsx
+<TamboProvider mcpServers={mcpServers}>
+  <TamboMcpProvider>
+    {children}
+  </TamboMcpProvider>
+</TamboProvider>
+```
+
+The browser connects directly to the MCP server over HTTP. No backend proxy. Add or remove a server and Tambo auto-connects or disconnects. The AI discovers new tools instantly. Someone connects their Supabase, types "show me my users table", and the AI runs the SQL query right there in chat.
+
+### Generation stages
+
+Instead of a generic spinner, users see what the AI is actually doing:
+
+```
+Thinking → Analyzing → Generating → Writing → Complete
+```
+
+`useTamboGenerationStage` exposes the internal pipeline. "Analyzing" when fetching context, "Generating" when hydrating a component, "Writing" when streaming.
+
+### What I use from the SDK
+
+| What | How |
+|---|---|
+| `TamboProvider` + `TamboMcpProvider` | Top-level setup with auth, components, tools, MCP |
+| `useTamboThread` / `useTamboThreadList` / `useTamboClient` | Thread switching, history, deletion |
+| `useTamboContextHelpers` + `addContextHelper` | Always-on context: selected repo, GitHub status, MCP servers |
+| `useTamboContextAttachment` | One-shot context for user-attached data |
+| `useTamboSuggestions` | AI-generated follow-up suggestions |
+| `useTamboGenerationStage` | Real-time progress indicator |
+| `useTamboStreamStatus` | Wait for streaming before rendering charts |
+| `useTamboComponentState` + `withInteractable` | Two-way state sync on ReviewChecklist |
+| `useTamboThreadInput` | Input state, image staging |
+| `useTamboVoice` | Voice dictation |
+| `useTamboElicitationContext` | AI asks questions mid-conversation |
+| `useTamboMcpServers` / `PromptList` / `ResourceList` | MCP prompt and resource discovery |
+| `TamboTool` | 11 GitHub tools with Zod input/output schemas |
+| `TamboComponent` | 12 generative components |
+
+---
+
 ## Features
 
 ### Code Intelligence
 
-Tree-sitter WASM parses files into AST chunks across these languages:
+Tree-sitter WASM parses files into AST chunks across 11 languages:
 
 ```
 JS · TS · Python · Go · Rust · Java · C · C++ · C# · Ruby · Kotlin
 ```
 
-Each chunk (function, class, interface, type) gets embedded as a 1536-dim vector and stored in Convex's vector index. When reviewing a PR, the AI searches for semantically similar code across the entire codebase. Not keyword matching; meaning matching.
+Each chunk (function, class, interface, type) gets embedded as a 1536-dim vector. When reviewing a PR or searching code, the AI searches for semantically similar code across the entire codebase. Not keyword matching — meaning matching.
 
-### Generative UI
-
-The AI picks the right component for the situation. I don't write routing logic; Tambo handles that.
+### Generative UI Components
 
 | What happened | What renders |
 |---|---|
@@ -132,179 +265,34 @@ The AI picks the right component for the situation. I don't write routing logic;
 | Planning | `PlanView` — multi-step task breakdown |
 | Explanation needed | `CodeExplainer` — annotated walkthrough |
 
-### Per-User MCP Integrations
-
-Each user connects their own services from Settings. Tokens stay per-user, never shared.
-
-```
-Settings → "Add Integration" → Pick Supabase → Enter project ref + token → Connect
-  ↓
-Browser connects directly to mcp.supabase.com (HTTP)
-  ↓
-AI discovers tools: execute_sql, list_tables, get_schemas...
-  ↓
-User: "show me my users table" → AI runs SQL → renders result
-```
-
-Works with any MCP-compatible server, not just Supabase.
-
 ### GitHub Tools
 
 | Tool | What it does |
 |---|---|
-| `analyzePR` | Fetch PR metadata + full file diffs |
+| `analyzePR` | PR metadata + diffs + indexed codebase context for deeper reviews |
+| `searchCode` | Semantic vector search on indexed codebase, GitHub API fallback |
 | `getFileContent` | Read any file from any branch |
-| `postReviewComment` | Add inline comments on PR |
+| `postReviewComment` | Inline comments on PR lines |
 | `submitReview` | Approve / request changes |
-| `mergePR` | Merge (always confirms first) |
+| `mergePR` | Merge with confirmation |
 | `getRepoTree` | Browse repository structure |
-| `searchCode` | Search code across the repo |
 | `listPullRequests` | Filter PRs by state |
-| `listBranches` | Get available branches |
+| `listBranches` | Available branches |
+| `listCommits` | Recent commit history |
+| `compareCommits` | Diff between branches, tags, or SHAs |
 
 ### Auto-Review Pipeline
 
-GitHub webhooks trigger automatic reviews when PRs are opened or updated:
+GitHub webhooks trigger automatic reviews when PRs are opened or updated. Runs as a durable Convex workflow with checkpointing and automatic retries:
 
 ```
-PR opened → webhook → fetch diff → vector search for context
-  → DeepSeek V3.2 structured review → post to GitHub as PR review
+PR opened → webhook → durable workflow starts
+  → fetch diff + PR details from GitHub
+  → vector search indexed AST chunks for codebase context
+  → DeepSeek V3.2 generates structured review
+  → post to GitHub as formal PR review
+  → each step checkpointed, retries on failure
 ```
-
----
-
-## How I Use Tambo (and why it matters)
-
-Most AI chat apps work the same way: the AI calls a tool, gets JSON back, and the developer writes a big `switch` statement to decide what UI to show. The AI has no idea what components exist. You're manually wiring everything.
-
-Tambo does something different. I register my React components with Zod schemas and a plain-English description of when to use them. The AI model sees all of this and picks the right component itself. It then streams the props in real-time, so the UI renders live as the AI thinks.
-
-```tsx
-// src/lib/tambo.ts
-{
-  name: "SecurityAlert",
-  description: `Render when finding a security vulnerability...
-    TRIGGER: SQL injection, XSS, auth issues, OWASP top 10`,
-  component: SecurityAlert,
-  propsSchema: securityAlertSchema, // Zod schema — AI sees the shape
-}
-```
-
-No routing logic on my end. I just describe when a component should appear, and the AI figures it out.
-
-### Context helpers: the AI already knows what you're looking at
-
-This is probably my favorite pattern. I register context helpers that get silently injected into every message. The AI always has ambient awareness of what's happening in the app:
-
-```tsx
-// src/app/providers.tsx — these run on every single message
-contextHelpers={{
-  currentTime: currentTimeContextHelper,
-  githubStatus: () => ({
-    connected: true,
-    username: "aryan877",
-  }),
-  mcpIntegrations: () => ({
-    count: 1,
-    servers: ["Supabase Production"],
-  }),
-}}
-```
-
-Then on the chat page, I dynamically register the selected repo:
-
-```tsx
-// src/app/chat/page.tsx
-addContextHelper("selectedRepo", () => ({
-  owner: "vercel",
-  name: "next.js",
-  defaultBranch: "canary",
-}));
-```
-
-So when someone types "list open PRs", the AI doesn't ask "which repo?" It already knows. And when the user switches repos from the dropdown, the context updates reactively. Next message, different repo. Zero friction.
-
-There's also `useTamboContextAttachment` for one-shot context: the user clicks a button, pastes a stack trace, and it gets sent with just that one message. Helpers are always-on; attachments are fire-once.
-
-### Interactable components: the AI and user share state
-
-Most of my components are one-directional: AI generates props, user reads. But the `ReviewChecklist` is different. It's wrapped with `withInteractable`, which gives it two-way state sync between the AI and the user:
-
-```tsx
-// src/components/review/review-checklist.tsx
-const [findings, setFindings] = useTamboComponentState<Finding[]>(
-  "findings", propFindings, propFindings
-);
-
-// user checks off a finding
-const toggleResolved = (id: string) => {
-  setFindings(findings.map(f =>
-    f.id === id ? { ...f, resolved: !f.resolved } : f
-  ));
-};
-
-export const ReviewChecklist = withInteractable(ReviewChecklistBase, {
-  componentName: "ReviewChecklist",
-  stateSchema: ReviewChecklistStateSchema,
-});
-```
-
-The AI adds findings during a review. The user checks them off as they fix things. Later, the AI can read the checklist state back and say "you've resolved 3 of 7 findings, want me to look at the remaining ones?" That's not just rendering UI; it's shared state between a human and an AI model.
-
-### Streaming-safe by design
-
-Since Tambo streams props incrementally, my components get called with partial data during generation:
-
-```
-Render 1: { title: undefined, steps: undefined }   ← steps.map() would crash
-Render 2: { title: "Plan", steps: undefined }
-Render 3: { title: "Plan", steps: [{ ... }] }
-```
-
-Every component uses safe defaults (`steps = []`, `content = ""`, etc.) so nothing breaks mid-stream. For things like charts and dependency graphs that can't render partially, I use `useTamboStreamStatus` to wait until streaming finishes before mounting the visualization.
-
-### Generation stages
-
-Instead of a generic spinner, I show what the AI is actually doing:
-
-```
-Thinking → Analyzing → Generating → Writing → Complete
-```
-
-`useTamboGenerationStage` exposes the internal pipeline stages. The user sees "Analyzing" when the AI is fetching context, "Generating" when it's hydrating a component, and "Writing" when it's streaming the response.
-
-### Per-user MCP: each user brings their own tools
-
-Users can connect their own MCP servers from Settings (Supabase, custom APIs, anything MCP-compatible). The config is stored in Convex and loaded reactively:
-
-```tsx
-<TamboProvider mcpServers={mcpServers}>
-  <TamboMcpProvider>
-    {children}
-  </TamboMcpProvider>
-</TamboProvider>
-```
-
-The browser connects directly to the MCP server over HTTP. No backend proxy. When a user adds or removes a server, Tambo auto-connects or disconnects. The AI discovers the new tools instantly and can call them in the same conversation. Someone connects their Supabase, types "show me my users table", and the AI runs the SQL query right there in chat.
-
-### What I use from Tambo's SDK
-
-| What | How I use it |
-|---|---|
-| `TamboProvider` + `TamboMcpProvider` | Top-level setup with auth, components, tools, MCP |
-| `useTamboThread` / `useTamboThreadList` / `useTamboClient` | Thread switching, history, deletion |
-| `useTamboContextHelpers` + `addContextHelper` | Always-on context: selected repo, GitHub status, MCP servers |
-| `useTamboContextAttachment` | One-shot context: user attaches extra info to a message |
-| `useTamboSuggestions` | AI-generated follow-up suggestions after each response |
-| `useTamboGenerationStage` | Real-time generation progress indicator |
-| `useTamboStreamStatus` | Wait for streaming to finish before rendering charts |
-| `useTamboComponentState` + `withInteractable` | Two-way state sync on ReviewChecklist |
-| `useTamboThreadInput` | Input state management, image staging |
-| `useTamboVoice` | Voice dictation button |
-| `useTamboElicitationContext` | AI can ask the user questions mid-conversation |
-| `useTamboMcpPrompt` / `PromptList` / `ResourceList` | MCP prompt and resource discovery |
-| `TamboTool` | GitHub tools with Zod input/output schemas |
-| `TamboComponent` | Generative components + interactable ReviewChecklist |
 
 ---
 
@@ -314,21 +302,19 @@ The browser connects directly to the MCP server over HTTP. No backend proxy. Whe
 |---|---|
 | **Framework** | Next.js 15, React 19, TailwindCSS v4 |
 | **AI Orchestration** | Tambo Generative UI SDK ([self-hosted backend](https://tambo-api.aryankumar.dev)) |
-| **Backend** | Convex (real-time DB + workflow engine) |
+| **Backend** | Convex (real-time DB + durable workflows) |
 | **Auth** | Clerk (OAuth + GitHub App) |
-| **Code Parsing** | Tree-sitter WASM (multi-language grammars) |
+| **Code Parsing** | Tree-sitter WASM (11 language grammars) |
 | **Embeddings** | OpenAI `text-embedding-3-small` (1536-dim) |
 | **Code Review AI** | DeepSeek V3.2 via OpenRouter |
 | **GitHub** | Octokit + GitHub App + webhooks |
-| **MCP** | `@modelcontextprotocol/sdk` (HTTP transport) |
+| **MCP** | `@modelcontextprotocol/sdk` (HTTP transport, per-user) |
 | **Code Editor** | Monaco Editor |
 | **Terminal** | XTerm.js |
 | **Dependency Graphs** | XYFlow (React Flow) |
 | **Charts** | Recharts |
-| **Rich Text** | TipTap (ProseMirror) |
 | **Animations** | Framer Motion |
 | **UI Primitives** | Radix UI |
-| **Validation** | Zod |
 
 ---
 
@@ -351,7 +337,8 @@ NEXT_PUBLIC_TAMBO_API_KEY=        # from tambo.co/dashboard
 NEXT_PUBLIC_CONVEX_URL=           # from npx convex dev
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY= # from clerk.com
 CLERK_SECRET_KEY=
-OPENROUTER_API_KEY=               # for embeddings + reviews
+OPENROUTER_API_KEY=               # for reviews + docstrings
+OPENAI_API_KEY=                   # for embeddings
 GITHUB_APP_ID=                    # your GitHub App
 GITHUB_PRIVATE_KEY=               # GitHub App private key
 ```
@@ -361,76 +348,52 @@ npx convex dev --once   # deploy backend
 npm run dev             # start app
 ```
 
-Then paste the system prompt from [`src/lib/constants.ts`](src/lib/constants.ts) into **Tambo Dashboard > Settings > Custom Instructions**. This is the single source of truth for the AI agent's behavior.
+Then paste the system prompt from [`src/lib/constants.ts`](src/lib/constants.ts) into **Tambo Dashboard > Settings > Custom Instructions**.
 
 ---
 
 <details>
 <summary><b>How the Indexing Pipeline Works</b></summary>
 
+Runs as a durable Convex workflow (`@convex-dev/workflow`) with automatic retries and checkpointing. Each step survives server restarts.
+
 ```
-Push to indexed branch (GitHub webhook)
+Push to indexed branch (GitHub webhook) or manual trigger
+  → Create indexing job record
   → Fetch full repo tree via Octokit
-  → Filter: skip node_modules, .git, dist, build, lock files, minified JS
-  → Keep only supported languages (JS/TS/Python/Go/Rust/Java/C/C++/C#/Ruby/Kotlin/Bash)
-  → Delete all existing chunks for that branch (full re-index, not incremental)
-  → For each file:
+  → Compute incremental diff against existing indexed files
+    (only process changed/new files, skip unchanged, delete stale)
+  → For each batch of 5 files (checkpointed):
       → Fetch content from GitHub API
       → Parse with Tree-sitter WASM grammar
-      → Extract definitions using tags.scm queries (functions, classes, methods, interfaces, types)
-      → Fall back to AST traversal if no query file exists for the language
-      → Generate 1536-dim embedding per chunk via OpenAI text-embedding-3-small
-      → Store chunk + embedding in Convex vector index
+      → Extract definitions using tags.scm queries
+      → Generate docstrings via OpenRouter
+      → Generate 1536-dim embeddings via OpenAI
+      → Store chunks + embeddings in Convex vector index
   → Mark branch as indexed
 ```
 
-**Indexing triggers:** push events to already-indexed branches, or manual trigger. Each run is a **full re-index** — old chunks are deleted before new ones are stored. This ensures no stale code lingers after refactors or file deletions.
-
-The composite key pattern (`{repoId}:{branch}`) enables efficient single-field filtering during vector search — an industry standard for multi-tenant vector databases.
-
-</details>
-
-<details>
-<summary><b>Solving Tree-sitter on Convex: The WASM Bundling Problem</b></summary>
-
-Running Tree-sitter in a serverless environment (Convex) required solving a non-trivial packaging problem. Here's the short version:
-
-**The challenge:** Tree-sitter has two parts that need to work together on the server:
-
-| Package | What it does |
-|---|---|
-| `web-tree-sitter` | The runtime engine — loads WASM grammars, parses code, runs queries |
-| `tree-sitter-wasms` | Pre-compiled WASM binaries for 30+ languages (JS, Python, Go, etc.) |
-
-Convex uses **esbuild** to bundle your backend code. Packages listed in `externalPackages` get installed on the server via `npm install` instead of being inlined. But esbuild can only detect packages from **static** `require()` calls with string literals — dynamic `require(variable)` is invisible to the bundler.
-
-**What we did:**
-
-1. **Static require for detection:** Added `require("tree-sitter-wasms/package.json")` at the top of `indexing.ts`. This is never used for its return value — it just tells esbuild "this package exists, mark it external." We use `/package.json` specifically because the main entry (`bindings/node`) is a native addon that crashes in Convex's runtime.
-
-2. **Version matching:** `tree-sitter-wasms@0.1.13` compiles its WASMs with `tree-sitter-cli@0.20.x`. The WASM binary format changed in 0.22+, so `web-tree-sitter@0.26.x` can't load them (fails at `getDylinkMetadata`). Pinned to `web-tree-sitter@0.22.6` which is the newest version compatible with the 0.20.x WASM format.
-
-3. **Local query files:** Tree-sitter's `tags.scm` query files enable smart extraction (find all function/class/method definitions). These ship inside individual language packages (`tree-sitter-javascript`, etc.), but those packages have conflicting peer dependencies that break `npm install` on Convex's server. Solution: copied the 10 query files into `convex/queries/` and load them with `fs.readFileSync` at runtime.
-
-**Result:** Full AST-based code intelligence across multiple languages running on Convex's serverless runtime, with query-based definition extraction instead of naive regex or line-based chunking.
+Incremental indexing means only changed files get re-processed. The composite key pattern (`{repoId}:{branch}`) enables efficient filtering during vector search.
 
 </details>
 
 <details>
 <summary><b>How AI Reviews Work</b></summary>
 
+Also a durable workflow with retry logic. Both automated (webhook) and chat-initiated reviews use the same indexed codebase.
+
 ```
-PR opened/updated (webhook)
-  → Fetch PR diff + changed file contents
-  → For each changed file:
-    → Vector search: find top-K semantically similar code chunks
-    → This gives the AI context about HOW the changed code is used elsewhere
-  → Build context window: diff + relevant code + repo structure
+PR opened/updated (webhook) or user asks in chat
+  → Fetch PR diff + changed file list
+  → Vector search: find semantically similar code chunks from the index
+    (gives the AI context about HOW the changed code fits into the codebase)
+  → Build context: diff + related code + PR description
   → DeepSeek V3.2 generates structured JSON review:
     → Findings with category, severity, line numbers, suggestions
     → CWE IDs for security issues
   → Format as GitHub PR review with inline comments
   → Post via Octokit createReview API
+  → Each step checkpointed with exponential backoff retries
 ```
 
 </details>
@@ -446,10 +409,28 @@ User adds MCP server in Settings
   → Tambo's TamboMcpProvider connects via HTTP from browser
   → Tools auto-discovered and registered
   → AI can call them during conversation
-  → Changing/removing servers auto-disconnects (identity = url+transport+headers)
+  → Changing/removing servers auto-disconnects
 ```
 
-Convex stores the config. The browser connects directly to the MCP server. No proxy, no backend relay.
+Convex stores the config. Browser connects directly. No proxy.
+
+</details>
+
+<details>
+<summary><b>Tree-sitter on Convex: The WASM Problem</b></summary>
+
+Running Tree-sitter serverless required solving a packaging problem.
+
+| Package | Role |
+|---|---|
+| `web-tree-sitter@0.22.6` | Runtime engine — loads WASMs, parses code, runs queries |
+| `tree-sitter-wasms@0.1.13` | Pre-compiled WASM binaries for 30+ languages |
+
+**Version pinning:** The WASMs were compiled with `tree-sitter-cli@0.20.x`. The binary format changed in 0.22+. `web-tree-sitter@0.22.6` is the newest runtime that can load 0.20.x-era WASMs.
+
+**Static require trick:** `require("tree-sitter-wasms/package.json")` tells esbuild to mark it external. We use `/package.json` because the main entry is a native addon that crashes in Convex's runtime.
+
+**Local query files:** `tags.scm` files in `convex/queries/` copied from individual language packages. Using the packages directly causes peer dep conflicts on Convex's server.
 
 </details>
 
@@ -459,30 +440,30 @@ Convex stores the config. The browser connects directly to the MCP server. No pr
 
 ```
 repochat/
-├── convex/                  # Convex backend
-│   ├── schema.ts            # 10 tables, vector indexes
-│   ├── github.ts            # Octokit actions
-│   ├── indexing.ts          # Tree-sitter + embeddings pipeline
-│   ├── reviews.ts           # DeepSeek review engine
-│   ├── webhooks.ts          # GitHub webhook handlers
-│   ├── mcpServers.ts        # Per-user MCP CRUD
-│   ├── workflowManager.ts   # Async workflow orchestration
-│   └── queries/             # Tree-sitter tags.scm files
-│       ├── javascript.scm   #   Bundled locally to avoid peer dep conflicts
-│       ├── typescript.scm   #   with individual tree-sitter-* packages
-│       └── ...
+├── convex/                     # Convex backend
+│   ├── schema.ts               # 10 tables, vector indexes
+│   ├── github.ts               # Octokit actions (public + internal)
+│   ├── indexing.ts             # Tree-sitter + embeddings + vector search
+│   ├── indexingWorkflow.ts     # Durable indexing workflow
+│   ├── reviews.ts              # PR review generation + posting
+│   ├── reviewWorkflow.ts      # Durable review workflow
+│   ├── workflowManager.ts     # Retry config, parallelism
+│   ├── webhooks.ts             # GitHub webhook handlers
+│   ├── mcpServers.ts           # Per-user MCP CRUD
+│   └── queries/                # Tree-sitter tags.scm files
 ├── src/
 │   ├── app/
-│   │   ├── providers.tsx    # Tambo + MCP + Clerk + Convex
-│   │   ├── page.tsx         # Main chat + sidebar
-│   │   └── settings/        # MCP integrations UI
+│   │   ├── providers.tsx       # Tambo + MCP + Clerk + Convex
+│   │   ├── chat/               # Main chat interface
+│   │   ├── settings/           # MCP integrations + repo config
+│   │   └── docs/               # Documentation page
 │   ├── components/
-│   │   ├── review/          # 12 generative UI components
-│   │   ├── tambo/           # Chat framework
-│   │   └── code-view/       # Monaco + XTerm + file explorer
+│   │   ├── review/             # 12 generative UI components
+│   │   ├── tambo/              # Chat framework
+│   │   └── code-view/          # Monaco + XTerm + file explorer
 │   └── lib/
-│       ├── tambo.ts         # Component registry
-│       └── tools.ts         # GitHub tool definitions
+│       ├── tambo.ts            # Component registry
+│       └── tools.ts            # 11 GitHub tool definitions
 └── package.json
 ```
 
